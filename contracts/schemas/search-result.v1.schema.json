@@ -1,0 +1,17 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "search-result.v1.schema.json",
+  "title": "SearchResult v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["chunk", "score", "citations"],
+  "properties": {
+    "chunk": { "$ref": "chunk.v1.schema.json" },
+    "score": { "type": "number", "minimum": 0 },
+    "citations": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "citation.v1.schema.json" }
+    }
+  }
+}

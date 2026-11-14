@@ -1,0 +1,17 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "obligation.v1.schema.json",
+  "title": "Obligation v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["id", "action", "owner", "deadline", "source", "confidence", "status"],
+  "properties": {
+    "id": { "type": "string", "minLength": 1 },
+    "action": { "type": "string", "minLength": 1 },
+    "owner": { "type": "string", "minLength": 1 },
+    "deadline": { "type": "string", "format": "date-time" },
+    "source": { "$ref": "citation.v1.schema.json" },
+    "confidence": { "type": "number", "minimum": 0, "maximum": 1 },
+    "status": { "type": "string", "enum": ["open", "in_progress", "complete", "cancelled"] }
+  }
+}

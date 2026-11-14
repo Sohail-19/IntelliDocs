@@ -1,0 +1,16 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "document.v1.schema.json",
+  "title": "Document v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["id", "filename", "mime_type", "source_uri", "status"],
+  "properties": {
+    "id": { "type": "string", "minLength": 1 },
+    "filename": { "type": "string", "minLength": 1 },
+    "mime_type": { "type": "string", "minLength": 1 },
+    "source_uri": { "type": "string", "minLength": 1 },
+    "language": { "type": "string", "minLength": 2 },
+    "status": { "type": "string", "enum": ["pending", "processing", "ready", "failed"] }
+  }
+}

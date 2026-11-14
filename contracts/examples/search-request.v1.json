@@ -1,0 +1,5 @@
+{
+  "query": "monthly report deadline",
+  "filters": { "language": "en", "document_type": "agreement" },
+  "top_k": 5
+}

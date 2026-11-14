@@ -1,0 +1,19 @@
+{
+  "obligations": [
+    {
+      "id": "obl-001",
+      "action": "Submit the monthly report",
+      "owner": "supplier",
+      "deadline": "2026-12-05T17:00:00Z",
+      "source": {
+        "doc_id": "doc-001",
+        "page": 2,
+        "char_start": 15,
+        "char_end": 95,
+        "quote": "The supplier must submit the monthly report by the fifth business day."
+      },
+      "confidence": 0.94,
+      "status": "open"
+    }
+  ]
+}

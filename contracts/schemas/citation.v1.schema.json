@@ -1,0 +1,15 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "citation.v1.schema.json",
+  "title": "Citation v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["doc_id", "page", "char_start", "char_end", "quote"],
+  "properties": {
+    "doc_id": { "type": "string", "minLength": 1 },
+    "page": { "type": "integer", "minimum": 1 },
+    "char_start": { "type": "integer", "minimum": 0 },
+    "char_end": { "type": "integer", "minimum": 0 },
+    "quote": { "type": "string", "minLength": 1 }
+  }
+}

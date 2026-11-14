@@ -1,0 +1,9 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "ingest-request.v1.schema.json",
+  "title": "Ingest request v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["file_reference"],
+  "properties": { "file_reference": { "type": "string", "minLength": 1 } }
+}

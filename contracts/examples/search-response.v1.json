@@ -1,0 +1,24 @@
+{
+  "results": [
+    {
+      "chunk": {
+        "id": "chunk-001",
+        "doc_id": "doc-001",
+        "page": 2,
+        "char_start": 15,
+        "char_end": 95,
+        "text": "The supplier must submit the monthly report by the fifth business day."
+      },
+      "score": 0.89,
+      "citations": [
+        {
+          "doc_id": "doc-001",
+          "page": 2,
+          "char_start": 15,
+          "char_end": 95,
+          "quote": "The supplier must submit the monthly report by the fifth business day."
+        }
+      ]
+    }
+  ]
+}

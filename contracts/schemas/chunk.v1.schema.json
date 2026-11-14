@@ -1,0 +1,16 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "chunk.v1.schema.json",
+  "title": "Chunk v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["id", "doc_id", "page", "char_start", "char_end", "text"],
+  "properties": {
+    "id": { "type": "string", "minLength": 1 },
+    "doc_id": { "type": "string", "minLength": 1 },
+    "page": { "type": "integer", "minimum": 1 },
+    "char_start": { "type": "integer", "minimum": 0 },
+    "char_end": { "type": "integer", "minimum": 0 },
+    "text": { "type": "string", "minLength": 1 }
+  }
+}

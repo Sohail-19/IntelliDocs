@@ -1,0 +1,10 @@
+{
+  "languages": ["en", "hi"],
+  "ocr_engine": "tesseract",
+  "document_types": ["agreement", "invoice"],
+  "departments": ["legal", "finance"],
+  "routing_rules": [
+    { "document_type": "agreement", "department": "legal" },
+    { "document_type": "invoice", "department": "finance" }
+  ]
+}

@@ -1,0 +1,11 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "search-response.v1.schema.json",
+  "title": "Search response v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["results"],
+  "properties": {
+    "results": { "type": "array", "items": { "$ref": "search-result.v1.schema.json" } }
+  }
+}

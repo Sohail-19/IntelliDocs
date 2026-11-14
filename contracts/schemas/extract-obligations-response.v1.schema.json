@@ -1,0 +1,11 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "extract-obligations-response.v1.schema.json",
+  "title": "Extract obligations response v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["obligations"],
+  "properties": {
+    "obligations": { "type": "array", "items": { "$ref": "obligation.v1.schema.json" } }
+  }
+}
