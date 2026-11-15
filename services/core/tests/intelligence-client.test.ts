@@ -21,17 +21,32 @@ describe('intelligence client', () => {
     const client = new IntelligenceClient('https://intelligence.example/', mockFetch(requests));
 
     await client.health();
-    await client.ingest({ file: new Blob(['example']), org_id: 'example' }, 'input.pdf');
+    await client.ingest(
+      {
+        file: new Blob(['example']),
+        org_id: 'example',
+        index: true,
+        department: 'legal',
+        doc_type: 'agreement',
+        doc_date: '2026-11-15',
+      },
+      'input.pdf',
+    );
     await client.search({ query: 'deadline', top_k: 3 });
     await client.extractObligations({ doc_id: 'doc-001' });
+    await client.index({ doc_id: 'doc-001' });
 
-    expect(requests).toHaveLength(4);
+    expect(requests).toHaveLength(5);
     expect(requests[0]).toMatchObject({ url: 'https://intelligence.example/health' });
     expect(requests[1]?.url).toBe('https://intelligence.example/v1/ingest');
     expect(requests[1]?.init?.method).toBe('POST');
     expect(requests[1]?.init?.headers).toBeUndefined();
     const body = requests[1]?.init?.body as FormData;
     expect(body.get('org_id')).toBe('example');
+    expect(body.get('index')).toBe('true');
+    expect(body.get('department')).toBe('legal');
+    expect(body.get('doc_type')).toBe('agreement');
+    expect(body.get('doc_date')).toBe('2026-11-15');
     const file = body.get('file') as File;
     expect(file.name).toBe('input.pdf');
     expect(await file.text()).toBe('example');
@@ -46,6 +61,14 @@ describe('intelligence client', () => {
       },
       {
         url: 'https://intelligence.example/v1/extract-obligations',
+        init: {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ doc_id: 'doc-001' }),
+        },
+      },
+      {
+        url: 'https://intelligence.example/v1/index',
         init: {
           method: 'POST',
           headers: { 'content-type': 'application/json' },

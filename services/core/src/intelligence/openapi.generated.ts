@@ -59,13 +59,62 @@ export interface paths {
                 };
             };
             responses: {
-                /** @description Document accepted */
+                /** @description Document parsed; optional index results included */
                 202: {
                     headers: {
                         [name: string]: unknown;
                     };
                     content: {
                         "application/json": components["schemas"]["ingest-response.v1.schema"];
+                    };
+                };
+                /** @description Parsing succeeded but optional indexing failed; stored document remains available */
+                503: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ingest-response.v1.schema"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/index": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** @description Index a stored parsed document, reusing cached embeddings when content and embedding configuration match. */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["index-request.v1.schema"];
+                };
+            };
+            responses: {
+                /** @description Document indexed */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["index-result.v1.schema"];
                     };
                 };
             };
@@ -166,6 +215,12 @@ export interface components {
              */
             file: string;
             org_id?: string;
+            /** @description Trigger indexing after parsing; defaults to false. */
+            index?: boolean;
+            department?: string;
+            doc_type?: string;
+            /** Format: date */
+            doc_date?: string;
         };
         /** Document v1 */
         "document.v1.schema": {
@@ -174,6 +229,11 @@ export interface components {
             mime_type: string;
             source_uri: string;
             parent_document_id?: string;
+            content_hash?: string;
+            department?: string;
+            doc_type?: string;
+            /** Format: date */
+            doc_date?: string;
             language?: string;
             /** @enum {string} */
             status: "pending" | "processing" | "ready" | "failed";
@@ -206,10 +266,23 @@ export interface components {
             warnings: string[];
             attachments?: components["schemas"]["parse-result.v1.schema"][];
         };
+        /** IndexResult v1 */
+        "index-result.v1.schema": {
+            doc_id: string;
+            chunk_count: number;
+            embedding_model: string;
+            warnings: string[];
+        };
         /** Ingest response v1 */
         "ingest-response.v1.schema": {
             document_id: string;
             parse_result: components["schemas"]["parse-result.v1.schema"];
+            index_results?: components["schemas"]["index-result.v1.schema"][];
+            index_error?: string;
+        };
+        /** IndexRequest v1 */
+        "index-request.v1.schema": {
+            doc_id: string;
         };
         /** Search request v1 */
         "search-request.v1.schema": {
@@ -222,11 +295,22 @@ export interface components {
         /** Chunk v1 */
         "chunk.v1.schema": {
             id: string;
+            chunk_id?: string;
             doc_id: string;
             page: number;
+            page_start?: number;
+            page_end?: number;
             char_start: number;
             char_end: number;
             text: string;
+            block_ids?: string[];
+            clause_number?: string;
+            heading_path?: string[];
+            language?: string;
+            department?: string;
+            /** Format: date */
+            doc_date?: string;
+            doc_type?: string;
         };
         /** Citation v1 */
         "citation.v1.schema": {

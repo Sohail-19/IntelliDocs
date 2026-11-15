@@ -7,10 +7,20 @@
   "required": ["id", "doc_id", "page", "char_start", "char_end", "text"],
   "properties": {
     "id": { "type": "string", "minLength": 1 },
+    "chunk_id": { "type": "string", "minLength": 1 },
     "doc_id": { "type": "string", "minLength": 1 },
     "page": { "type": "integer", "minimum": 1 },
+    "page_start": { "type": "integer", "minimum": 1 },
+    "page_end": { "type": "integer", "minimum": 1 },
     "char_start": { "type": "integer", "minimum": 0 },
     "char_end": { "type": "integer", "minimum": 0 },
-    "text": { "type": "string", "minLength": 1 }
+    "text": { "type": "string", "minLength": 1 },
+    "block_ids": { "type": "array", "items": { "type": "string", "minLength": 1 } },
+    "clause_number": { "type": "string", "minLength": 1 },
+    "heading_path": { "type": "array", "items": { "type": "string", "minLength": 1 } },
+    "language": { "type": "string", "minLength": 2 },
+    "department": { "type": "string", "minLength": 1 },
+    "doc_date": { "type": "string", "format": "date" },
+    "doc_type": { "type": "string", "minLength": 1 }
   }
 }

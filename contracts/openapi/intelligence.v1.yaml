@@ -13,7 +13,17 @@
       "post": {
         "requestBody": { "required": true, "content": { "multipart/form-data": { "schema": { "$ref": "../schemas/ingest-request.v1.schema.json" } } } },
         "responses": {
-          "202": { "description": "Document accepted", "content": { "application/json": { "schema": { "$ref": "../schemas/ingest-response.v1.schema.json" } } } }
+          "202": { "description": "Document parsed; optional index results included", "content": { "application/json": { "schema": { "$ref": "../schemas/ingest-response.v1.schema.json" } } } },
+          "503": { "description": "Parsing succeeded but optional indexing failed; stored document remains available", "content": { "application/json": { "schema": { "$ref": "../schemas/ingest-response.v1.schema.json" } } } }
+        }
+      }
+    },
+    "/v1/index": {
+      "post": {
+        "description": "Index a stored parsed document, reusing cached embeddings when content and embedding configuration match.",
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "../schemas/index-request.v1.schema.json" } } } },
+        "responses": {
+          "200": { "description": "Document indexed", "content": { "application/json": { "schema": { "$ref": "../schemas/index-result.v1.schema.json" } } } }
         }
       }
     },

@@ -1,6 +1,9 @@
 import type { components } from './openapi.generated.js';
 
 type Schemas = components['schemas'];
+export type Chunk = Schemas['chunk.v1.schema'];
+export type IndexRequest = Schemas['index-request.v1.schema'];
+export type IndexResult = Schemas['index-result.v1.schema'];
 export type IngestRequest = Omit<Schemas['ingest-request.v1.schema'], 'file'> & { file: Blob };
 // The generator does not encode conditional requirements or bounded array lengths.
 type GeneratedDocument = Schemas['document.v1.schema'];
@@ -58,12 +61,20 @@ export class IntelligenceClient {
     if (request.org_id !== undefined) {
       body.append('org_id', request.org_id);
     }
+    if (request.index !== undefined) body.append('index', String(request.index));
+    if (request.department !== undefined) body.append('department', request.department);
+    if (request.doc_type !== undefined) body.append('doc_type', request.doc_type);
+    if (request.doc_date !== undefined) body.append('doc_date', request.doc_date);
     const response = await this.fetchImplementation(`${this.baseUrl}/v1/ingest`, {
       method: 'POST',
       body,
     });
     this.assertSuccess(response);
     return (await response.json()) as IngestResponse;
+  }
+
+  index(request: IndexRequest): Promise<IndexResult> {
+    return this.post('/v1/index', request);
   }
 
   search(request: SearchRequest): Promise<SearchResponse> {

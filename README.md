@@ -37,6 +37,16 @@ Intelligence also accepts the same fields at `http://localhost:8000/v1/ingest`.
 storage path, backed by the `intelligence_uploads` volume. Organization selection
 uses `org_id` or `DEFAULT_ORG_ID`, and reads engines/languages from `ORG_CONFIG_DIR`.
 
+Core uploads also index the document and its attachments, recording `parsed`,
+`indexed`, or `failed` on each Postgres document row. Intelligence uploads index
+only when `-F index=true` is supplied. Both accept optional `department`,
+`doc_type`, and `doc_date` (YYYY-MM-DD); missing values come only from explicit
+`upload_defaults` in the org config. Configure `CHUNK_TARGET_TOKENS`,
+`CHUNK_OVERLAP_TOKENS`, `CHUNK_TOKEN_COUNT_METHOD`, `EMBEDDING_BATCH_SIZE`, and the
+embedding backend in `.env`. Re-indexing an unchanged document reuses persisted
+embeddings. The default fake embedder supports local checks; semantic vectors
+require the optional BGE-M3 extra and model files provisioned before runtime.
+
 ## Run checks locally
 
 Contracts require only the Python standard library:

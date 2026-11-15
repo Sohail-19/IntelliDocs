@@ -56,6 +56,10 @@ def test_search_response_matches_contract() -> None:
     validate_contract(response.json(), "search-response.v1.schema.json")
 
 
+def test_index_requires_document_id() -> None:
+    assert client.post("/v1/index", json={"doc_id": ""}).status_code == 422
+
+
 def test_ingest_without_org_id() -> None:
     response = client.post(
         "/v1/ingest",

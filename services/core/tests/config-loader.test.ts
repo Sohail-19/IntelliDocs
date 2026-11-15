@@ -1,4 +1,4 @@
-import { mkdtemp, writeFile } from 'node:fs/promises';
+import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { resolve } from 'node:path';
 
@@ -19,5 +19,27 @@ describe('organization config loader', () => {
     await writeFile(brokenPath, 'languages: []\nocr_engine: test\n', 'utf8');
 
     await expect(loadOrgConfig(brokenPath)).rejects.toThrow('Invalid organization config');
+  });
+
+  it('validates explicit upload defaults including calendar dates', async () => {
+    const directory = await mkdtemp(resolve(tmpdir(), 'intellidocs-config-'));
+    const path = resolve(directory, 'defaults.yaml');
+    const example = JSON.parse(await readFile(examplePath, 'utf8')) as Record<string, unknown>;
+    try {
+      await writeFile(
+        path,
+        JSON.stringify({ ...example, upload_defaults: { doc_date: '2026-11-15' } }),
+      );
+      await expect(loadOrgConfig(path)).resolves.toMatchObject({
+        upload_defaults: { doc_date: '2026-11-15' },
+      });
+      await writeFile(
+        path,
+        JSON.stringify({ ...example, upload_defaults: { doc_date: '2026-02-30' } }),
+      );
+      await expect(loadOrgConfig(path)).rejects.toThrow('Invalid organization config');
+    } finally {
+      await rm(directory, { recursive: true });
+    }
   });
 });
