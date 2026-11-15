@@ -1,0 +1,6 @@
+{
+  "doc_id": "doc-001",
+  "chunk_count": 3,
+  "embedding_model": "fake-sha256-v1",
+  "warnings": []
+}

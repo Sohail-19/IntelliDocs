@@ -3,6 +3,7 @@ import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { Ajv2020 } from 'ajv/dist/2020.js';
+import addFormats from 'ajv-formats';
 import YAML from 'yaml';
 
 export interface RoutingRule {
@@ -11,6 +12,7 @@ export interface RoutingRule {
 }
 
 export interface OrgConfig {
+  upload_defaults?: { department?: string; doc_type?: string; doc_date?: string };
   languages: string[];
   ocr_engine: string;
   document_types: string[];
@@ -25,7 +27,16 @@ const defaultOrgConfigDirectory = resolve(repositoryRoot, 'config/orgs');
 
 async function validator() {
   const schema = JSON.parse(await readFile(orgConfigSchemaPath, 'utf8')) as object;
-  return new Ajv2020({ allErrors: true, strict: true }).compile<OrgConfig>(schema);
+  const metadata = JSON.parse(
+    await readFile(
+      resolve(repositoryRoot, 'contracts/schemas/upload-metadata.v1.schema.json'),
+      'utf8',
+    ),
+  ) as object;
+  const ajv = new Ajv2020({ allErrors: true, strict: true });
+  addFormats.default(ajv);
+  ajv.addSchema(metadata);
+  return ajv.compile<OrgConfig>(schema);
 }
 
 export async function loadOrgConfig(path: string): Promise<OrgConfig> {

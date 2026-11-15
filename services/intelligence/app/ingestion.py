@@ -1,5 +1,6 @@
 """Validated, local ingestion with recursive attachment persistence."""
 
+import hashlib
 import os
 import re
 from pathlib import Path
@@ -7,7 +8,7 @@ from uuid import uuid4
 
 from fastapi import HTTPException, UploadFile
 
-from intellidocs_intelligence.models import OrgConfig, ParseResult
+from intellidocs_intelligence.models import OrgConfig, ParseResult, UploadMetadata
 
 from .parsing.base import dependency
 from .parsing.factory import parser_from_config
@@ -53,7 +54,24 @@ class IngestionService:
     def __init__(self, storage: Storage) -> None:
         self.storage = storage
 
-    def ingest(self, upload: UploadFile, config: OrgConfig) -> ParseResult:
+    def ingest(
+        self, upload: UploadFile, config: OrgConfig, metadata: UploadMetadata | None = None
+    ) -> ParseResult:
+        values = (config.upload_defaults or UploadMetadata()).model_dump(exclude_none=True)
+        values.update((metadata or UploadMetadata()).model_dump(exclude_none=True))
+        selected = UploadMetadata.model_validate(values)
+        if (
+            selected.department
+            and config.departments
+            and selected.department not in config.departments
+        ):
+            raise HTTPException(400, "department is not allowed by org config")
+        if (
+            selected.doc_type
+            and config.document_types
+            and selected.doc_type not in config.document_types
+        ):
+            raise HTTPException(400, "doc_type is not allowed by org config")
         limit = upload_limit()
         if upload.size is not None and upload.size > limit:
             raise HTTPException(413, "File exceeds MAX_UPLOAD_BYTES")
@@ -102,6 +120,10 @@ class IngestionService:
             result.document.mime_type = mime_type
             result.document.source_uri = self.storage.source_uri(identifier, filename)
             result.document.parent_document_id = parent
+            result.document.content_hash = hashlib.sha256(data).hexdigest()
+            result.document.department = selected.department
+            result.document.doc_type = selected.doc_type
+            result.document.doc_date = selected.doc_date
             self.storage.save_result(identifier, result)
             return result
 

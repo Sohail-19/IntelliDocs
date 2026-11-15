@@ -1,0 +1,11 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "upload-metadata.v1.schema.json",
+  "title": "Explicit upload metadata v1",
+  "type": "object", "additionalProperties": false,
+  "properties": {
+    "department": { "type": "string", "minLength": 1 },
+    "doc_type": { "type": "string", "minLength": 1 },
+    "doc_date": { "type": "string", "format": "date" }
+  }
+}

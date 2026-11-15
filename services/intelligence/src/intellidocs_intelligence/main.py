@@ -3,19 +3,29 @@
 from typing import Annotated
 
 from fastapi import Depends, FastAPI, File, Form, HTTPException, UploadFile
+from fastapi.responses import JSONResponse
 
+from app.indexing import IndexingFactory, document_tree, indexer_from_env
 from app.ingestion import IngestionService, load_org, storage_from_env
 from app.storage import Storage
 
 from .models import (
     ExtractObligationsRequest,
     ExtractObligationsResponse,
+    IndexRequest,
+    IndexResult,
     IngestResponse,
     SearchRequest,
     SearchResponse,
+    UploadMetadata,
 )
 
 app = FastAPI(title="IntelliDocs Intelligence API", version="v1")
+
+
+def get_indexing_factory(storage: Annotated[Storage, Depends(storage_from_env)]) -> IndexingFactory:
+    # Defer configuration/model/client construction unless indexing is requested.
+    return lambda: indexer_from_env(storage)
 
 
 @app.get("/health")
@@ -30,18 +40,60 @@ def health() -> dict[str, str]:
 def ingest(
     file: Annotated[UploadFile, File()],
     storage: Annotated[Storage, Depends(storage_from_env)],
+    indexing_factory: Annotated[IndexingFactory, Depends(get_indexing_factory)],
     org_id: Annotated[str | None, Form(min_length=1)] = None,
-) -> IngestResponse:
+    index: Annotated[bool, Form()] = False,
+    department: Annotated[str | None, Form(min_length=1)] = None,
+    doc_type: Annotated[str | None, Form(min_length=1)] = None,
+    doc_date: Annotated[str | None, Form(pattern=r"^\d{4}-\d{2}-\d{2}$")] = None,
+) -> IngestResponse | JSONResponse:
     """Persist a validated upload, parsed content, and attachment results."""
     try:
-        result = IngestionService(storage).ingest(file, load_org(org_id))
+        result = IngestionService(storage).ingest(
+            file,
+            load_org(org_id),
+            UploadMetadata.model_validate(
+                {"department": department, "doc_type": doc_type, "doc_date": doc_date}
+            ),
+        )
     except HTTPException:
         raise
     except RuntimeError as error:
         raise HTTPException(503, str(error)) from error
     except Exception as error:
         raise HTTPException(422, "Unable to parse the uploaded document") from error
-    return IngestResponse(document_id=result.document.id, parse_result=result)
+    response = IngestResponse(document_id=result.document.id, parse_result=result)
+    if index:
+        response.index_results = []
+        try:
+            with indexing_factory() as indexer:
+                for item in document_tree(result):
+                    response.index_results.append(indexer.index(item.document.id))
+        except Exception:
+            response.index_error = (
+                "Optional indexing failed; parsed documents remain stored. Retry /v1/index."
+            )
+            return JSONResponse(
+                status_code=503, content=response.model_dump(mode="json", exclude_none=True)
+            )
+    return response
+
+
+@app.post("/v1/index", response_model=IndexResult)
+def index_document(
+    request: IndexRequest,
+    indexing_factory: Annotated[IndexingFactory, Depends(get_indexing_factory)],
+) -> IndexResult:
+    """Index a stored parse result with batched, cache-aware embeddings."""
+    try:
+        with indexing_factory() as indexer:
+            return indexer.index(request.doc_id)
+    except FileNotFoundError as error:
+        raise HTTPException(404, "Stored document not found") from error
+    except ValueError as error:
+        raise HTTPException(400, str(error)) from error
+    except Exception as error:
+        raise HTTPException(503, "Indexing failed; retry the stored document") from error
 
 
 @app.post("/v1/search", response_model=SearchResponse)

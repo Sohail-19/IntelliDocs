@@ -44,7 +44,16 @@ describe('core upload flow', () => {
   it('forwards file and org through the typed client, then persists the result', async () => {
     const ingest = vi.fn().mockResolvedValue(response);
     const save = vi.fn().mockResolvedValue(undefined);
-    const app = createApp({ intelligence: { ingest }, documents: { save } });
+    const index = vi.fn().mockImplementation((request: { doc_id: string }) =>
+      Promise.resolve({
+        doc_id: request.doc_id,
+        chunk_count: 1,
+        embedding_model: 'fake',
+        warnings: [],
+      }),
+    );
+    const setStatus = vi.fn().mockResolvedValue(undefined);
+    const app = createApp({ intelligence: { ingest, index }, documents: { save, setStatus } });
     const result = await request(app)
       .post('/v1/upload')
       .field('org_id', 'example')
@@ -53,17 +62,29 @@ describe('core upload flow', () => {
         contentType: 'message/rfc822',
       });
     expect(result.status).toBe(202);
-    expect(result.body).toEqual(response);
+    expect(result.body).toMatchObject(response);
     const call = ingest.mock.calls[0] as [{ file: Blob; org_id: string }, string];
     expect(call[1]).toBe('mail.eml');
     expect(call[0].org_id).toBe('example');
     expect(await call[0].file.text()).toBe('original message');
     expect(save).toHaveBeenCalledWith(response);
+    expect((ingest.mock.calls[0] as [{ index: boolean }])[0].index).toBe(false);
+    expect(index).toHaveBeenNthCalledWith(1, { doc_id: 'parent' });
+    expect(index).toHaveBeenNthCalledWith(2, { doc_id: 'child' });
+    expect(setStatus).toHaveBeenCalledWith('parent', 'indexed');
+    expect(setStatus).toHaveBeenCalledWith('child', 'indexed');
+    expect(save.mock.invocationCallOrder[0]).toBeLessThan(
+      index.mock.invocationCallOrder[0] ?? Infinity,
+    );
   });
 
   it('rejects oversized files before calling intelligence', async () => {
     const ingest = vi.fn();
-    const app = createApp({ intelligence: { ingest }, documents: { save: vi.fn() }, maxBytes: 4 });
+    const app = createApp({
+      intelligence: { ingest, index: vi.fn() },
+      documents: { save: vi.fn(), setStatus: vi.fn() },
+      maxBytes: 4,
+    });
     const result = await request(app)
       .post('/v1/upload')
       .attach('file', Buffer.from('too large'), 'input.pdf');
@@ -74,8 +95,11 @@ describe('core upload flow', () => {
   it('does not persist when intelligence rejects the upload', async () => {
     const save = vi.fn();
     const app = createApp({
-      intelligence: { ingest: vi.fn().mockRejectedValue(new IntelligenceError(415)) },
-      documents: { save },
+      intelligence: {
+        ingest: vi.fn().mockRejectedValue(new IntelligenceError(415)),
+        index: vi.fn(),
+      },
+      documents: { save, setStatus: vi.fn() },
     });
     const result = await request(app)
       .post('/v1/upload')
@@ -86,17 +110,94 @@ describe('core upload flow', () => {
 
   it('does not report success when Postgres persistence fails', async () => {
     const app = createApp({
-      intelligence: { ingest: vi.fn().mockResolvedValue(response) },
-      documents: { save: vi.fn().mockRejectedValue(new Error('database unavailable')) },
+      intelligence: { ingest: vi.fn().mockResolvedValue(response), index: vi.fn() },
+      documents: {
+        save: vi.fn().mockRejectedValue(new Error('database unavailable')),
+        setStatus: vi.fn(),
+      },
     });
     const result = await request(app)
       .post('/v1/upload')
       .attach('file', Buffer.from('mail'), 'mail.eml');
     expect(result.status).toBe(500);
   });
+
+  it('records failed indexing and returns retryable document ids', async () => {
+    const setStatus = vi.fn().mockResolvedValue(undefined);
+    const save = vi.fn().mockResolvedValue(undefined);
+    const index = vi.fn().mockRejectedValue(new IntelligenceError(503));
+    const app = createApp({
+      intelligence: { ingest: vi.fn().mockResolvedValue(response), index },
+      documents: { save, setStatus },
+    });
+    const result = await request(app)
+      .post('/v1/upload')
+      .attach('file', Buffer.from('mail'), 'mail.eml');
+    expect(result.status).toBe(502);
+    const body = result.body as { document_id: string; index_error?: string };
+    expect(body.document_id).toBe('parent');
+    expect(typeof body.index_error).toBe('string');
+    expect(setStatus).toHaveBeenCalledWith('parent', 'failed', 'Indexing failed');
+    expect(setStatus).toHaveBeenCalledWith('child', 'failed', 'Indexing failed');
+    expect(save).toHaveBeenCalled();
+  });
+
+  it('forwards explicit metadata without guessing dates', async () => {
+    const ingest = vi.fn().mockResolvedValue(response);
+    const app = createApp({
+      intelligence: {
+        ingest,
+        index: vi.fn().mockImplementation((request: { doc_id: string }) =>
+          Promise.resolve({
+            doc_id: request.doc_id,
+            chunk_count: 1,
+            embedding_model: 'fake',
+            warnings: [],
+          }),
+        ),
+      },
+      documents: {
+        save: vi.fn().mockResolvedValue(undefined),
+        setStatus: vi.fn().mockResolvedValue(undefined),
+      },
+    });
+    const result = await request(app)
+      .post('/v1/upload')
+      .field('department', 'legal')
+      .field('doc_type', 'agreement')
+      .field('doc_date', '2026-11-15')
+      .attach('file', Buffer.from('mail'), 'mail.eml');
+    expect(result.status).toBe(202);
+    expect(ingest).toHaveBeenCalledWith(
+      expect.objectContaining({
+        department: 'legal',
+        doc_type: 'agreement',
+        doc_date: '2026-11-15',
+        index: false,
+      }),
+      'mail.eml',
+    );
+  });
 });
 
 describe('document repository', () => {
+  it('updates indexing status and rejects a missing row', async () => {
+    const query = vi
+      .fn()
+      .mockResolvedValueOnce({ rowCount: 1 })
+      .mockResolvedValueOnce({ rowCount: 0 });
+    const pool = { query } as unknown as Pool;
+    const repository = new PostgresDocumentRepository(pool);
+    await repository.setStatus('parent', 'indexed');
+    expect(query).toHaveBeenCalledWith(expect.stringContaining('indexed_at'), [
+      'parent',
+      'indexed',
+      null,
+    ]);
+    await expect(repository.setStatus('missing', 'failed', 'failed')).rejects.toThrow(
+      'no matching row',
+    );
+  });
   it('stores parent and attachments in one transaction', async () => {
     const connection = {
       query: vi.fn().mockResolvedValue({ rows: [{ id: 42 }] }),
@@ -108,12 +209,12 @@ describe('document repository', () => {
     expect(connection.query).toHaveBeenNthCalledWith(
       2,
       expect.stringContaining('INSERT INTO documents'),
-      ['parent', 'mail.eml', 'ready', null],
+      ['parent', 'mail.eml', 'parsed', null, null],
     );
     expect(connection.query).toHaveBeenNthCalledWith(
       3,
       expect.stringContaining('INSERT INTO documents'),
-      ['child', 'attached.pdf', 'ready', 42],
+      ['child', 'attached.pdf', 'parsed', 42, null],
     );
     expect(connection.query).toHaveBeenLastCalledWith('COMMIT');
     expect(connection.release).toHaveBeenCalled();

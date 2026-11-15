@@ -3,10 +3,15 @@ import multer from 'multer';
 
 import type { DocumentRepository } from './documents.js';
 import { IntelligenceError } from './intelligence/client.js';
-import type { IntelligenceClient, IngestRequest } from './intelligence/client.js';
+import type {
+  IntelligenceClient,
+  IngestRequest,
+  IndexResult,
+  ParseResult,
+} from './intelligence/client.js';
 
 export interface UploadDependencies {
-  intelligence: Pick<IntelligenceClient, 'ingest'>;
+  intelligence: Pick<IntelligenceClient, 'ingest' | 'index'>;
   documents: DocumentRepository;
   maxBytes?: number;
 }
@@ -20,7 +25,7 @@ export function uploadRouter(dependencies: UploadDependencies): Router {
     limits: {
       fileSize: maxBytes,
       files: 1,
-      fields: 1,
+      fields: 4,
       fieldSize: 256,
     },
   });
@@ -44,15 +49,58 @@ export function uploadRouter(dependencies: UploadDependencies): Router {
         res.status(400).json({ error: 'Invalid org_id' });
         return;
       }
+      for (const name of ['department', 'doc_type', 'doc_date']) {
+        const value = fields[name];
+        if (value !== undefined && (typeof value !== 'string' || !value.trim())) {
+          res.status(400).json({ error: `Invalid ${name}` });
+          return;
+        }
+      }
+      const docDate = fields.doc_date as string | undefined;
+      if (
+        docDate !== undefined &&
+        (!/^\d{4}-\d{2}-\d{2}$/.test(docDate) ||
+          Number.isNaN(Date.parse(docDate)) ||
+          new Date(docDate).toISOString().slice(0, 10) !== docDate)
+      ) {
+        res.status(400).json({ error: 'Invalid doc_date' });
+        return;
+      }
       const request: IngestRequest = {
         file: new Blob([new Uint8Array(req.file.buffer)], { type: req.file.mimetype }),
         ...(typeof orgId === 'string' ? { org_id: orgId } : {}),
+        ...(typeof fields.department === 'string' ? { department: fields.department } : {}),
+        ...(typeof fields.doc_type === 'string' ? { doc_type: fields.doc_type } : {}),
+        ...(docDate !== undefined ? { doc_date: docDate } : {}),
+        index: false,
       };
       const filename = req.file.originalname;
       void (async () => {
         const result = await dependencies.intelligence.ingest(request, filename);
         await dependencies.documents.save(result);
-        res.status(202).json(result);
+        const indexResults: IndexResult[] = [];
+        let failed = false;
+        const documents: ParseResult[] = [result.parse_result];
+        for (const parsed of documents) {
+          documents.push(...(parsed.attachments ?? []));
+          try {
+            const indexed = await dependencies.intelligence.index({ doc_id: parsed.document.id });
+            if (indexed.doc_id !== parsed.document.id)
+              throw new Error('Index response document mismatch');
+            await dependencies.documents.setStatus(parsed.document.id, 'indexed');
+            indexResults.push(indexed);
+          } catch {
+            failed = true;
+            await dependencies.documents.setStatus(parsed.document.id, 'failed', 'Indexing failed');
+          }
+        }
+        res.status(failed ? 502 : 202).json({
+          ...result,
+          index_results: indexResults,
+          ...(failed
+            ? { index_error: 'Some documents failed indexing; parsed documents remain stored.' }
+            : {}),
+        });
       })().catch((failure: unknown) => {
         if (failure instanceof IntelligenceError) {
           res

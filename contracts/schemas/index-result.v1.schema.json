@@ -1,0 +1,14 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "index-result.v1.schema.json",
+  "title": "IndexResult v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["doc_id", "chunk_count", "embedding_model", "warnings"],
+  "properties": {
+    "doc_id": { "type": "string", "minLength": 1 },
+    "chunk_count": { "type": "integer", "minimum": 0 },
+    "embedding_model": { "type": "string", "minLength": 1 },
+    "warnings": { "type": "array", "items": { "type": "string" } }
+  }
+}

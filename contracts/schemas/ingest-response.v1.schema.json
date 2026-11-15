@@ -7,6 +7,8 @@
   "required": ["document_id", "parse_result"],
   "properties": {
     "document_id": { "type": "string", "minLength": 1 },
-    "parse_result": { "$ref": "parse-result.v1.schema.json" }
+    "parse_result": { "$ref": "parse-result.v1.schema.json" },
+    "index_results": { "type": "array", "items": { "$ref": "index-result.v1.schema.json" } },
+    "index_error": { "type": "string" }
   }
 }

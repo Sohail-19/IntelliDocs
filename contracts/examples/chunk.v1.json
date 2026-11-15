@@ -1,8 +1,18 @@
 {
   "id": "chunk-001",
+  "chunk_id": "chunk-001",
   "doc_id": "doc-001",
   "page": 2,
+  "page_start": 2,
+  "page_end": 3,
   "char_start": 15,
   "char_end": 95,
-  "text": "The supplier must submit the monthly report by the fifth business day."
+  "text": "The supplier must submit the monthly report by the fifth business day.",
+  "block_ids": ["block-2-1", "block-3-1"],
+  "clause_number": "3.2",
+  "heading_path": ["Section 3", "3.2"],
+  "language": "en",
+  "department": "legal",
+  "doc_date": "2026-11-15",
+  "doc_type": "agreement"
 }

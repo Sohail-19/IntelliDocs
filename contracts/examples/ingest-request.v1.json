@@ -1,1 +1,2 @@
-{ "file": "Example uploaded text.", "org_id": "example" }
+{ "file": "Example uploaded text.", "org_id": "example", "index": true,
+  "department": "legal", "doc_type": "agreement", "doc_date": "2026-11-15" }

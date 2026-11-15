@@ -8,8 +8,9 @@ Python standard library; no runtime or service dependencies are required.
 from __future__ import annotations
 
 import json
+import re
 import sys
-from datetime import datetime
+from datetime import date, datetime
 from pathlib import Path
 from typing import Any
 
@@ -108,8 +109,17 @@ def validate_instance(instance: Any, schema: dict[str, Any], source: Path, schem
     if "enum" in schema and instance not in schema["enum"]:
         raise ContractError(f"{source.relative_to(ROOT)}: {location} is not an allowed value")
     if isinstance(instance, str):
+        if "pattern" in schema and re.search(schema["pattern"], instance) is None:
+            raise ContractError(f"{source.relative_to(ROOT)}: {location} does not match pattern")
         if len(instance) < schema.get("minLength", 0):
             raise ContractError(f"{source.relative_to(ROOT)}: {location} is shorter than minLength")
+        if schema.get("format") == "date":
+            try:
+                parsed_date = date.fromisoformat(instance)
+                if parsed_date.isoformat() != instance:
+                    raise ValueError("expected YYYY-MM-DD")
+            except ValueError as error:
+                raise ContractError(f"{source.relative_to(ROOT)}: {location} is not an ISO date") from error
         if schema.get("format") == "date-time":
             try:
                 datetime.fromisoformat(instance.replace("Z", "+00:00"))
@@ -147,7 +157,7 @@ def validate_openapi(schemas: dict[Path, dict[str, Any]]) -> None:
     spec = load_json(OPENAPI)
     if spec.get("openapi") != "3.1.0" or spec.get("info", {}).get("version") != "v1":
         raise ContractError("contracts/openapi/intelligence.v1.yaml: must be OpenAPI 3.1.0, version v1")
-    expected = {"/health": "get", "/v1/ingest": "post", "/v1/search": "post", "/v1/extract-obligations": "post"}
+    expected = {"/health": "get", "/v1/ingest": "post", "/v1/index": "post", "/v1/search": "post", "/v1/extract-obligations": "post"}
     if set(spec.get("paths", {})) != set(expected):
         raise ContractError("contracts/openapi/intelligence.v1.yaml: paths do not match the v1 contract")
     for endpoint, method in expected.items():
