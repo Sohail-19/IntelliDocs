@@ -1,0 +1,33 @@
+From: author@example.invalid
+To: reader@example.invalid
+Subject: Original email fixture
+MIME-Version: 1.0
+Content-Type: multipart/mixed; boundary="===============5136347782588721018=="
+
+--===============5136347782588721018==
+Content-Type: text/plain; charset="utf-8"
+Content-Transfer-Encoding: 7bit
+
+1. Read the original attachment.
+
+--===============5136347782588721018==
+Content-Type: application/pdf
+Content-Transfer-Encoding: base64
+Content-Disposition: attachment; filename="attached.pdf"
+MIME-Version: 1.0
+
+JVBERi0xLjMKJeLjz9MKMSAwIG9iago8PAovUHJvZHVjZXIgKHB5cGRmKQo+PgplbmRvYmoKMiAw
+IG9iago8PAovVHlwZSAvUGFnZXMKL0NvdW50IDEKL0tpZHMgWyA0IDAgUiBdCj4+CmVuZG9iagoz
+IDAgb2JqCjw8Ci9UeXBlIC9DYXRhbG9nCi9QYWdlcyAyIDAgUgo+PgplbmRvYmoKNCAwIG9iago8
+PAovVHlwZSAvUGFnZQovUmVzb3VyY2VzIDw8Ci9Gb250IDw8Ci9GMSA1IDAgUgo+Pgo+PgovTWVk
+aWFCb3ggWyAwLjAgMC4wIDMwMCA0MDAgXQovUGFyZW50IDIgMCBSCi9Db250ZW50cyA2IDAgUgo+
+PgplbmRvYmoKNSAwIG9iago8PAovVHlwZSAvRm9udAovU3VidHlwZSAvVHlwZTEKL0Jhc2VGb250
+IC9IZWx2ZXRpY2EKPj4KZW5kb2JqCjYgMCBvYmoKPDwKL0xlbmd0aCA2MQo+PgpzdHJlYW0KQlQg
+L0YxIDE2IFRmIDI1IDM1MCBUZCAoT3JpZ2luYWwgZGlnaXRhbCBmaXh0dXJlIHRleHQuKSBUaiBF
+VAplbmRzdHJlYW0KZW5kb2JqCnhyZWYKMCA3CjAwMDAwMDAwMDAgNjU1MzUgZiAKMDAwMDAwMDAx
+NSAwMDAwMCBuIAowMDAwMDAwMDU0IDAwMDAwIG4gCjAwMDAwMDAxMTMgMDAwMDAgbiAKMDAwMDAw
+MDE2MiAwMDAwMCBuIAowMDAwMDAwMjk0IDAwMDAwIG4gCjAwMDAwMDAzNjQgMDAwMDAgbiAKdHJh
+aWxlcgo8PAovU2l6ZSA3Ci9Sb290IDMgMCBSCi9JbmZvIDEgMCBSCj4+CnN0YXJ0eHJlZgo0NzUK
+JSVFT0YK
+
+--===============5136347782588721018==--

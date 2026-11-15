@@ -4,6 +4,9 @@
   "title": "Ingest request v1",
   "type": "object",
   "additionalProperties": false,
-  "required": ["file_reference"],
-  "properties": { "file_reference": { "type": "string", "minLength": 1 } }
+  "required": ["file"],
+  "properties": {
+    "file": { "type": "string", "format": "binary", "description": "Raw file bytes in the multipart file part." },
+    "org_id": { "type": "string", "minLength": 1 }
+  }
 }

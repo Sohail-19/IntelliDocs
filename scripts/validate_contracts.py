@@ -61,7 +61,7 @@ def validate_schema(schema: Any, path: Path, schemas: dict[Path, dict[str, Any]]
         node_type = node.get("type")
         if node_type is not None and node_type not in {"object", "array", "string", "integer", "number", "boolean", "null"}:
             raise ContractError(f"{path.relative_to(ROOT)}: unsupported type {node_type!r}")
-        for key in ("properties", "items", "additionalProperties"):
+        for key in ("properties", "items", "additionalProperties", "if", "then"):
             value = node.get(key)
             if isinstance(value, dict):
                 if key == "properties":
@@ -92,7 +92,16 @@ def validate_instance(instance: Any, schema: dict[str, Any], source: Path, schem
     if "$ref" in schema:
         target = (schema_path.parent / schema["$ref"]).resolve()
         validate_instance(instance, resolve_ref(schema["$ref"], schema_path, schemas), source, target, schemas, location)
-        return
+        # Draft 2020-12 also applies keywords alongside $ref.
+    if "const" in schema and instance != schema["const"]:
+        raise ContractError(f"{source.relative_to(ROOT)}: {location} does not match const")
+    if "if" in schema:
+        try:
+            validate_instance(instance, schema["if"], source, schema_path, schemas, location)
+        except ContractError:
+            pass
+        else:
+            validate_instance(instance, schema.get("then", {}), source, schema_path, schemas, location)
     expected = schema.get("type")
     if expected and not instance_type_matches(instance, expected):
         raise ContractError(f"{source.relative_to(ROOT)}: {location} must be a {expected}")
@@ -114,6 +123,8 @@ def validate_instance(instance: Any, schema: dict[str, Any], source: Path, schem
     if isinstance(instance, list):
         if len(instance) < schema.get("minItems", 0):
             raise ContractError(f"{source.relative_to(ROOT)}: {location} has too few items")
+        if "maxItems" in schema and len(instance) > schema["maxItems"]:
+            raise ContractError(f"{source.relative_to(ROOT)}: {location} has too many items")
         if "items" in schema:
             for index, item in enumerate(instance):
                 validate_instance(item, schema["items"], source, schema_path, schemas, f"{location}[{index}]")
@@ -145,7 +156,8 @@ def validate_openapi(schemas: dict[Path, dict[str, Any]]) -> None:
             raise ContractError(f"contracts/openapi/intelligence.v1.yaml: {method.upper()} {endpoint} is incomplete")
         if endpoint == "/health":
             continue
-        request_schema = operation.get("requestBody", {}).get("content", {}).get("application/json", {}).get("schema", {})
+        media_type = "multipart/form-data" if endpoint == "/v1/ingest" else "application/json"
+        request_schema = operation.get("requestBody", {}).get("content", {}).get(media_type, {}).get("schema", {})
         response_schemas = [
             body.get("content", {}).get("application/json", {}).get("schema", {})
             for body in operation["responses"].values()

@@ -15,13 +15,53 @@ class ContractModel(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
 
+class Block(ContractModel):
+    type: Literal["paragraph", "heading", "table", "list_item", "clause", "header_footer"]
+    text: str
+    bbox: list[Annotated[float, Field(ge=0)]] = Field(min_length=4, max_length=4)
+    reading_order: int = Field(ge=0)
+    clause_number: NonEmptyString | None = None
+    heading_level: int | None = Field(default=None, ge=1)
+    heading_path: list[NonEmptyString] | None = None
+    rows: list[list[str]] | None = None
+
+
+class TableBlock(Block):
+    type: Literal["table"] = "table"
+    rows: list[list[str]]
+
+
+class TextBlock(Block):
+    type: Literal["paragraph", "heading", "list_item", "clause", "header_footer"]
+
+
+class Page(ContractModel):
+    page: int = Field(ge=1)
+    language: LanguageCode
+    blocks: list[Annotated[TableBlock | TextBlock, Field(discriminator="type")]]
+
+
 class Document(ContractModel):
     id: NonEmptyString
     filename: NonEmptyString
     mime_type: NonEmptyString
     source_uri: NonEmptyString
+    parent_document_id: NonEmptyString | None = None
     language: LanguageCode | None = None
     status: Literal["pending", "processing", "ready", "failed"]
+    pages: list[Page] = Field(default_factory=list)
+
+
+class ParsedDocument(Document):
+    pages: list[Page]
+
+
+class ParseResult(ContractModel):
+    document: ParsedDocument
+    parser_name: NonEmptyString
+    parser_version: NonEmptyString
+    warnings: list[str]
+    attachments: list["ParseResult"] | None = None
 
 
 class Chunk(ContractModel):
@@ -71,11 +111,13 @@ class OrgConfig(ContractModel):
 
 
 class IngestRequest(ContractModel):
-    file_reference: NonEmptyString
+    file: bytes
+    org_id: NonEmptyString | None = None
 
 
 class IngestResponse(ContractModel):
     document_id: NonEmptyString
+    parse_result: ParseResult
 
 
 class SearchRequest(ContractModel):

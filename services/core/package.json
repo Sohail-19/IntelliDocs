@@ -13,12 +13,13 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "generate:openapi": "openapi-typescript ../../contracts/openapi/intelligence.v1.yaml -o src/intelligence/openapi.generated.ts",
-    "migrate:up": "node-pg-migrate up --migrations-dir migrations --migration-file-language ts",
-    "migrate:down": "node-pg-migrate down --migrations-dir migrations --migration-file-language ts"
+    "migrate:up": "node-pg-migrate up --tsx --migrations-dir migrations --migration-file-language ts",
+    "migrate:down": "node-pg-migrate down --tsx --migrations-dir migrations --migration-file-language ts"
   },
   "dependencies": {
     "ajv": "^8.17.1",
     "express": "^4.21.2",
+    "multer": "^2.0.2",
     "pg": "^8.13.1",
     "yaml": "^2.6.1"
   },
@@ -26,6 +27,7 @@
     "@eslint/js": "^9.18.0",
     "@types/express": "^5.0.0",
     "@types/node": "^22.10.5",
+    "@types/multer": "^2.0.0",
     "@types/pg": "^8.11.10",
     "@types/supertest": "^6.0.2",
     "eslint": "^9.18.0",

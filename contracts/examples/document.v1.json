@@ -4,5 +4,25 @@
   "mime_type": "application/pdf",
   "source_uri": "storage://documents/vendor-agreement.pdf",
   "language": "en",
-  "status": "ready"
+  "status": "ready",
+  "pages": [
+    {
+      "page": 1,
+      "language": "en",
+      "blocks": [
+        { "type": "heading", "text": "Agreement", "bbox": [40, 40, 500, 70], "reading_order": 0, "heading_level": 1, "heading_path": [] },
+        { "type": "clause", "text": "1.1 Submit a monthly report.", "bbox": [40, 80, 500, 110], "reading_order": 1, "clause_number": "1.1", "heading_path": ["Agreement"] },
+        { "type": "table", "text": "", "bbox": [40, 120, 500, 200], "reading_order": 2, "rows": [["Item", "Amount"], ["Report", "100"]], "heading_path": ["Agreement"] }
+      ]
+    },
+    {
+      "page": 2,
+      "language": "hi",
+      "blocks": [
+        { "type": "paragraph", "text": "यह एक उदाहरण है।", "bbox": [40, 40, 500, 70], "reading_order": 0 },
+        { "type": "list_item", "text": "मासिक रिपोर्ट", "bbox": [40, 80, 500, 110], "reading_order": 1 },
+        { "type": "header_footer", "text": "2", "bbox": [280, 750, 300, 770], "reading_order": 2 }
+      ]
+    }
+  ]
 }
