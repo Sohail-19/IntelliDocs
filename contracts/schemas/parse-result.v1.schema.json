@@ -1,0 +1,15 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "parse-result.v1.schema.json",
+  "title": "ParseResult v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["document", "parser_name", "parser_version", "warnings"],
+  "properties": {
+    "document": { "$ref": "document.v1.schema.json", "required": ["pages"] },
+    "parser_name": { "type": "string", "minLength": 1 },
+    "parser_version": { "type": "string", "minLength": 1 },
+    "warnings": { "type": "array", "items": { "type": "string" } },
+    "attachments": { "type": "array", "items": { "$ref": "parse-result.v1.schema.json" } }
+  }
+}

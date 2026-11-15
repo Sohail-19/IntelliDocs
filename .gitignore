@@ -29,6 +29,7 @@ yarn-error.log*
 # Local data (keep its documentation tracked)
 data/*
 !data/README.md
+eval/results/
 
 # Model and ML caches
 .cache/

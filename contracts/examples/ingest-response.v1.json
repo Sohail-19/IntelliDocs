@@ -1,1 +1,19 @@
-{ "document_id": "doc-001" }
+{
+  "document_id": "doc-001",
+  "parse_result": {
+    "document": {
+      "id": "doc-001", "filename": "message.eml", "mime_type": "message/rfc822",
+      "source_uri": "file:///data/uploads/doc-001/source.eml", "status": "ready", "pages": []
+    },
+    "parser_name": "local-formats", "parser_version": "1",
+    "warnings": ["Logical pages and coordinates; physical pagination is unavailable."],
+    "attachments": [{
+      "document": {
+        "id": "attachment-001", "parent_document_id": "doc-001", "filename": "attached.pdf",
+        "mime_type": "application/pdf", "source_uri": "file:///data/uploads/attachment-001/source.pdf",
+        "status": "ready", "pages": []
+      },
+      "parser_name": "tesseract", "parser_version": "5", "warnings": []
+    }]
+  }
+}

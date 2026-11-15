@@ -1,11 +1,15 @@
 """HTTP entry point for the intelligence service."""
 
-from fastapi import FastAPI
+from typing import Annotated
+
+from fastapi import Depends, FastAPI, File, Form, HTTPException, UploadFile
+
+from app.ingestion import IngestionService, load_org, storage_from_env
+from app.storage import Storage
 
 from .models import (
     ExtractObligationsRequest,
     ExtractObligationsResponse,
-    IngestRequest,
     IngestResponse,
     SearchRequest,
     SearchResponse,
@@ -20,11 +24,24 @@ def health() -> dict[str, str]:
     return {"status": "ok"}
 
 
-@app.post("/v1/ingest", response_model=IngestResponse, status_code=202)
-def ingest(request: IngestRequest) -> IngestResponse:
-    """Accept a file reference; processing will be implemented later."""
-    del request
-    return IngestResponse(document_id="pending-document")
+@app.post(
+    "/v1/ingest", response_model=IngestResponse, status_code=202, response_model_exclude_none=True
+)
+def ingest(
+    file: Annotated[UploadFile, File()],
+    storage: Annotated[Storage, Depends(storage_from_env)],
+    org_id: Annotated[str | None, Form(min_length=1)] = None,
+) -> IngestResponse:
+    """Persist a validated upload, parsed content, and attachment results."""
+    try:
+        result = IngestionService(storage).ingest(file, load_org(org_id))
+    except HTTPException:
+        raise
+    except RuntimeError as error:
+        raise HTTPException(503, str(error)) from error
+    except Exception as error:
+        raise HTTPException(422, "Unable to parse the uploaded document") from error
+    return IngestResponse(document_id=result.document.id, parse_result=result)
 
 
 @app.post("/v1/search", response_model=SearchResponse)

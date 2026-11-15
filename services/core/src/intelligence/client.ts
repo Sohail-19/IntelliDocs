@@ -1,12 +1,38 @@
 import type { components } from './openapi.generated.js';
 
 type Schemas = components['schemas'];
-export type IngestRequest = Schemas['ingest-request.v1.schema'];
-export type IngestResponse = Schemas['ingest-response.v1.schema'];
+export type IngestRequest = Omit<Schemas['ingest-request.v1.schema'], 'file'> & { file: Blob };
+// The generator does not encode conditional requirements or bounded array lengths.
+type GeneratedDocument = Schemas['document.v1.schema'];
+type GeneratedPage = NonNullable<GeneratedDocument['pages']>[number];
+type GeneratedBlock = GeneratedPage['blocks'][number];
+type BlockFields = Omit<GeneratedBlock, 'type' | 'bbox' | 'rows'> & {
+  bbox: [number, number, number, number];
+};
+export type Block = BlockFields &
+  (
+    | { type: 'table'; rows: string[][] }
+    | { type: Exclude<GeneratedBlock['type'], 'table'>; rows?: string[][] }
+  );
+export type Page = Omit<GeneratedPage, 'blocks'> & { blocks: Block[] };
+export type Document = Omit<GeneratedDocument, 'pages'> & { pages?: Page[] };
+export type ParseResult = Omit<Schemas['parse-result.v1.schema'], 'document' | 'attachments'> & {
+  document: Document & { pages: Page[] };
+  attachments?: ParseResult[];
+};
+export type IngestResponse = Omit<Schemas['ingest-response.v1.schema'], 'parse_result'> & {
+  parse_result: ParseResult;
+};
 export type SearchRequest = Schemas['search-request.v1.schema'];
 export type SearchResponse = Schemas['search-response.v1.schema'];
 export type ExtractObligationsRequest = Schemas['extract-obligations-request.v1.schema'];
 export type ExtractObligationsResponse = Schemas['extract-obligations-response.v1.schema'];
+
+export class IntelligenceError extends Error {
+  constructor(public readonly status: number) {
+    super(`Intelligence service returned ${status}`);
+  }
+}
 
 export class IntelligenceClient {
   private readonly baseUrl: string;
@@ -26,8 +52,18 @@ export class IntelligenceClient {
     this.assertSuccess(response);
   }
 
-  ingest(request: IngestRequest): Promise<IngestResponse> {
-    return this.post('/v1/ingest', request);
+  async ingest(request: IngestRequest, filename = 'upload'): Promise<IngestResponse> {
+    const body = new FormData();
+    body.append('file', request.file, filename);
+    if (request.org_id !== undefined) {
+      body.append('org_id', request.org_id);
+    }
+    const response = await this.fetchImplementation(`${this.baseUrl}/v1/ingest`, {
+      method: 'POST',
+      body,
+    });
+    this.assertSuccess(response);
+    return (await response.json()) as IngestResponse;
   }
 
   search(request: SearchRequest): Promise<SearchResponse> {
@@ -50,7 +86,7 @@ export class IntelligenceClient {
 
   private assertSuccess(response: Response): void {
     if (!response.ok) {
-      throw new Error(`Intelligence service returned ${response.status}`);
+      throw new IntelligenceError(response.status);
     }
   }
 }

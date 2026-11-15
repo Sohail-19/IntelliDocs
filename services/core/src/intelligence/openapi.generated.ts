@@ -55,7 +55,7 @@ export interface paths {
             };
             requestBody: {
                 content: {
-                    "application/json": components["schemas"]["ingest-request.v1.schema"];
+                    "multipart/form-data": components["schemas"]["ingest-request.v1.schema"];
                 };
             };
             responses: {
@@ -160,11 +160,56 @@ export interface components {
     schemas: {
         /** Ingest request v1 */
         "ingest-request.v1.schema": {
-            file_reference: string;
+            /**
+             * Format: binary
+             * @description Raw file bytes in the multipart file part.
+             */
+            file: string;
+            org_id?: string;
+        };
+        /** Document v1 */
+        "document.v1.schema": {
+            id: string;
+            filename: string;
+            mime_type: string;
+            source_uri: string;
+            parent_document_id?: string;
+            language?: string;
+            /** @enum {string} */
+            status: "pending" | "processing" | "ready" | "failed";
+            /** @description Optional for legacy metadata-only documents. Required within ParseResult. */
+            pages?: {
+                page: number;
+                language: string;
+                blocks: {
+                    /** @enum {string} */
+                    type: "paragraph" | "heading" | "table" | "list_item" | "clause" | "header_footer";
+                    text: string;
+                    /** @description Page-local coordinates in points, origin at top left: [x0, y0, x1, y1]. */
+                    bbox: number[];
+                    reading_order: number;
+                    clause_number?: string;
+                    /** @description One-based heading depth, present on headings. */
+                    heading_level?: number;
+                    /** @description Ancestor heading texts, outermost first; excludes the current heading itself. */
+                    heading_path?: string[];
+                    /** @description Table rows, with each cell represented as text. */
+                    rows?: string[][];
+                }[];
+            }[];
+        };
+        /** ParseResult v1 */
+        "parse-result.v1.schema": {
+            document: components["schemas"]["document.v1.schema"];
+            parser_name: string;
+            parser_version: string;
+            warnings: string[];
+            attachments?: components["schemas"]["parse-result.v1.schema"][];
         };
         /** Ingest response v1 */
         "ingest-response.v1.schema": {
             document_id: string;
+            parse_result: components["schemas"]["parse-result.v1.schema"];
         };
         /** Search request v1 */
         "search-request.v1.schema": {

@@ -1,0 +1,13 @@
+{
+  "document": {
+    "id": "doc-001",
+    "filename": "example.txt",
+    "mime_type": "text/plain",
+    "source_uri": "storage://documents/example.txt",
+    "status": "ready",
+    "pages": [{ "page": 1, "language": "en", "blocks": [{ "type": "paragraph", "text": "Example text.", "bbox": [0, 0, 100, 20], "reading_order": 0 }] }]
+  },
+  "parser_name": "example-parser",
+  "parser_version": "1.0.0",
+  "warnings": []
+}

@@ -29,12 +29,21 @@ services:
     build:
       context: .
       dockerfile: services/intelligence/Dockerfile
+      args:
+        TESSERACT_LANGUAGES: ${TESSERACT_LANGUAGES:-eng,hin}
+        PARSING_EXTRAS: ${PARSING_EXTRAS:-tesseract,formats}
     environment:
       INTELLIGENCE_PORT: ${INTELLIGENCE_PORT}
       LLM_PROVIDER: ${LLM_PROVIDER}
       LLM_MODEL: ${LLM_MODEL}
       LLM_API_KEY: ${LLM_API_KEY}
       LLM_BASE_URL: ${LLM_BASE_URL}
+      MAX_UPLOAD_BYTES: ${MAX_UPLOAD_BYTES:-20971520}
+      STORAGE_DIR: ${STORAGE_DIR:-/data/uploads}
+      ORG_CONFIG_DIR: ${ORG_CONFIG_DIR:-/config/orgs}
+      DEFAULT_ORG_ID: ${DEFAULT_ORG_ID:-}
+    volumes:
+      - intelligence_uploads:${STORAGE_DIR:-/data/uploads}
     ports:
       - "${INTELLIGENCE_PORT}:${INTELLIGENCE_PORT}"
     healthcheck:
@@ -52,6 +61,7 @@ services:
       CORE_PORT: ${CORE_PORT}
       DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
       INTELLIGENCE_URL: http://intelligence:${INTELLIGENCE_PORT}
+      MAX_UPLOAD_BYTES: ${MAX_UPLOAD_BYTES:-20971520}
     ports:
       - "${CORE_PORT}:${CORE_PORT}"
     depends_on:
@@ -65,3 +75,6 @@ services:
       timeout: 3s
       retries: 12
       start_period: 10s
+
+volumes:
+  intelligence_uploads:

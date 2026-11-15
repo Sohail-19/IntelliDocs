@@ -11,7 +11,7 @@
     },
     "/v1/ingest": {
       "post": {
-        "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "../schemas/ingest-request.v1.schema.json" } } } },
+        "requestBody": { "required": true, "content": { "multipart/form-data": { "schema": { "$ref": "../schemas/ingest-request.v1.schema.json" } } } },
         "responses": {
           "202": { "description": "Document accepted", "content": { "application/json": { "schema": { "$ref": "../schemas/ingest-response.v1.schema.json" } } } }
         }
