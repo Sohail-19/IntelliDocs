@@ -12,7 +12,12 @@ from typing import Any
 
 from pydantic import TypeAdapter, ValidationError
 
-from intellidocs_intelligence.embeddings import Embedder, Embedding, embedder_from_env
+from intellidocs_intelligence.embeddings import (
+    Embedder,
+    Embedding,
+    embedder_from_env,
+    embedding_settings_key,
+)
 from intellidocs_intelligence.models import IndexResult, ParseResult
 
 from .chunking import Chunker, ChunkingConfig
@@ -121,18 +126,13 @@ class IndexingService:
 
 
 @lru_cache(maxsize=8)
-def _cached_embedder(backend: str, model: str, device: str, prompt: str) -> Embedder:
+def _cached_embedder(settings: tuple[str | None, ...]) -> Embedder:
     return embedder_from_env()
 
 
 @contextmanager
 def indexer_from_env(storage: Storage) -> Iterator[IndexingService]:
-    embedder = _cached_embedder(
-        os.environ.get("EMBEDDING_BACKEND", "fake"),
-        os.environ.get("EMBEDDING_MODEL", "BAAI/bge-m3"),
-        os.environ.get("EMBEDDING_DEVICE", "cpu"),
-        os.environ.get("EMBEDDING_DOCUMENT_PROMPT", ""),
-    )
+    embedder = _cached_embedder(embedding_settings_key())
     settings = ChunkingConfig.from_env()
     if not os.environ.get("EMBEDDING_BATCH_SIZE"):
         raise ValueError("EMBEDDING_BATCH_SIZE is required")

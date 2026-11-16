@@ -15,6 +15,7 @@ from intellidocs_intelligence.embeddings import (
     BgeM3Embedder,
     FakeEmbedder,
     SentenceTransformerEmbedder,
+    SparseOverrideEmbedder,
     embedder_from_env,
 )
 
@@ -178,9 +179,10 @@ def test_factory_and_environment(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("EMBEDDING_BACKEND", "sentence_transformers")
     monkeypatch.setenv("EMBEDDING_DOCUMENT_PROMPT", "passage: ")
     smaller = embedder_from_env()
-    assert isinstance(smaller, SentenceTransformerEmbedder)
-    assert smaller.model_name == "chosen-model" and smaller.device == "cuda:1"
-    assert smaller.prompt == "passage: "
+    assert isinstance(smaller, SparseOverrideEmbedder)
+    assert isinstance(smaller.delegate, SentenceTransformerEmbedder)
+    assert smaller.model_name == "chosen-model" and smaller.delegate.device == "cuda:1"
+    assert smaller.delegate.prompt == "passage: "
     monkeypatch.setenv("EMBEDDING_BACKEND", "unknown")
     with pytest.raises(ValueError, match="Unsupported EMBEDDING_BACKEND"):
         embedder_from_env()

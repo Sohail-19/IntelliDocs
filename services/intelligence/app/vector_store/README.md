@@ -28,6 +28,10 @@ vectors default to `dense` (cosine) and `sparse` and can be named explicitly in
 the constructor. All embeddings are validated before collection/point writes.
 An existing collection must have compatible vector names, dense size, and cosine
 distance. Conflicting payload index types cause an error, not index deletion.
+BM25 sparse vectors require Qdrant's `idf` modifier; native BGE-M3 vectors use
+`none`. The store derives this from the configured embedder and rejects an
+existing collection with a different modifier before writing points. See
+[sparse configuration](../../../../docs/performance.md) for migration and query settings.
 Use a separate collection per embedding model/version, even if dimensions happen
 to match; dimensional compatibility alone cannot prove model compatibility.
 
