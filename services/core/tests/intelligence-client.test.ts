@@ -32,7 +32,7 @@ describe('intelligence client', () => {
       },
       'input.pdf',
     );
-    await client.search({ query: 'deadline', top_k: 3 });
+    await client.search({ query: 'deadline', top_k: 3, filters: { language: 'hi' }, debug: true });
     await client.extractObligations({ doc_id: 'doc-001' });
     await client.index({ doc_id: 'doc-001' });
 
@@ -56,7 +56,12 @@ describe('intelligence client', () => {
         init: {
           method: 'POST',
           headers: { 'content-type': 'application/json' },
-          body: JSON.stringify({ query: 'deadline', top_k: 3 }),
+          body: JSON.stringify({
+            query: 'deadline',
+            top_k: 3,
+            filters: { language: 'hi' },
+            debug: true,
+          }),
         },
       },
       {

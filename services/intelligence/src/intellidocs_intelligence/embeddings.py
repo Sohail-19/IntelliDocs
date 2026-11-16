@@ -8,6 +8,7 @@ import os
 from abc import ABC, abstractmethod
 from collections import Counter
 from collections.abc import Sequence
+from functools import lru_cache
 from importlib import import_module
 from pathlib import Path
 from threading import Lock
@@ -34,6 +35,16 @@ def embedding_settings_key() -> tuple[str | None, ...]:
             "BM25_AVG_DOC_LENGTH",
         )
     )
+
+
+@lru_cache(maxsize=8)
+def _cached_embedder(settings: tuple[str | None, ...]) -> Embedder:
+    return embedder_from_env()
+
+
+def configured_embedder() -> Embedder:
+    """Share the configured model between indexing and query encoding."""
+    return _cached_embedder(embedding_settings_key())
 
 
 class SparseVector(TypedDict):

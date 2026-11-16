@@ -29,6 +29,7 @@
     },
     "/v1/search": {
       "post": {
+        "description": "Retrieve and rerank chunks with source citations. Set debug=true in the request body to include stage timings.",
         "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "../schemas/search-request.v1.schema.json" } } } },
         "responses": {
           "200": { "description": "Grounded search results", "content": { "application/json": { "schema": { "$ref": "../schemas/search-response.v1.schema.json" } } } }

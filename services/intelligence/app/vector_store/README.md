@@ -1,7 +1,8 @@
 # Vector persistence
 
-`VectorStore` exposes `upsert_chunks` and `delete_document`. `search` is a reserved
-method that raises `NotImplementedError`; retrieval/ranking is not implemented.
+`VectorStore` exposes `upsert_chunks` and `delete_document`. To retrieve ranked
+chunk candidates from a `QdrantStore`, use the internal retriever factory.
+[Retrieval module](../retrieval/README.md)
 
 ```python
 from qdrant_client import QdrantClient

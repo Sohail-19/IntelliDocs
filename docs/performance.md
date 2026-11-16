@@ -76,9 +76,9 @@ vectors and fused by rank, such as Qdrant RRF. Tests exercise actual in-memory
 Qdrant sparse scoring and dense/sparse fusion for E5+BM25, BGE-native, and
 BGE+BM25 with mocked neural-model boundaries. They cover English/Hindi matching,
 term saturation, length normalization, stable hashing/collisions, dynamic IDF,
-cache invalidation, and collection compatibility. The existing `/v1/search`
-HTTP stub remains unchanged; this change supplies the representations and query
-encoding method for the retrieval implementation.
+cache invalidation, and collection compatibility. Internal retrieval uses these
+representations for dense, sparse, and hybrid queries.
+[Retriever configuration](../services/intelligence/app/retrieval/README.md)
 
 The initial 2026-11-15 measurements and the BGE-M3 rerun on 2026-11-16 used
 Python 3.11.17, macOS 27.2.1 arm64 (10 logical CPUs), qdrant-client 1.12.2,

@@ -6,6 +6,25 @@
   "additionalProperties": false,
   "required": ["results"],
   "properties": {
-    "results": { "type": "array", "items": { "$ref": "search-result.v1.schema.json" } }
+    "results": { "type": "array", "items": { "$ref": "search-result.v1.schema.json" } },
+    "debug": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["retriever", "reranker", "timings_ms"],
+      "properties": {
+        "retriever": { "type": "string", "minLength": 1 },
+        "reranker": { "type": "string", "minLength": 1 },
+        "timings_ms": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["retrieve", "rerank", "citations"],
+          "properties": {
+            "retrieve": { "type": "number", "minimum": 0 },
+            "rerank": { "type": "number", "minimum": 0 },
+            "citations": { "type": "number", "minimum": 0 }
+          }
+        }
+      }
+    }
   }
 }

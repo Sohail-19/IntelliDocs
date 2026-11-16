@@ -134,6 +134,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
+        /** @description Retrieve and rerank chunks with source citations. Set debug=true in the request body to include stage timings. */
         post: {
             parameters: {
                 query?: never;
@@ -291,6 +292,7 @@ export interface components {
                 [key: string]: string;
             };
             top_k: number;
+            debug?: boolean;
         };
         /** Chunk v1 */
         "chunk.v1.schema": {
@@ -316,19 +318,37 @@ export interface components {
         "citation.v1.schema": {
             doc_id: string;
             page: number;
+            page_start?: number;
+            page_end?: number;
             char_start: number;
             char_end: number;
             quote: string;
+            clause_number?: string;
+            heading_path?: string[];
         };
         /** SearchResult v1 */
         "search-result.v1.schema": {
             chunk: components["schemas"]["chunk.v1.schema"];
+            /** @description Original retrieval score. Cosine similarity can be negative. */
             score: number;
+            /** @description Reranker score when a scoring backend is enabled. */
+            rerank_score?: number;
+            /** @enum {string} */
+            source?: "dense" | "sparse" | "fused";
             citations: components["schemas"]["citation.v1.schema"][];
         };
         /** Search response v1 */
         "search-response.v1.schema": {
             results: components["schemas"]["search-result.v1.schema"][];
+            debug?: {
+                retriever: string;
+                reranker: string;
+                timings_ms: {
+                    retrieve: number;
+                    rerank: number;
+                    citations: number;
+                };
+            };
         };
         /** Extract obligations request v1 */
         "extract-obligations-request.v1.schema": {

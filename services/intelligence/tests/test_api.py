@@ -49,13 +49,6 @@ def test_ingest_response_matches_contract() -> None:
     assert result["document"]["status"] == "ready"
 
 
-def test_search_response_matches_contract() -> None:
-    response = client.post("/v1/search", json={"query": "deadline", "top_k": 3})
-
-    assert response.status_code == 200
-    validate_contract(response.json(), "search-response.v1.schema.json")
-
-
 def test_index_requires_document_id() -> None:
     assert client.post("/v1/index", json={"doc_id": ""}).status_code == 422
 

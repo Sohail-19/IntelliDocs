@@ -3,7 +3,7 @@
 from datetime import date, datetime
 from typing import Annotated, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, FiniteFloat, StrictBool, field_validator
 
 NonEmptyString = Annotated[str, Field(min_length=1)]
 LanguageCode = Annotated[str, Field(min_length=2)]
@@ -118,6 +118,10 @@ class Citation(ContractModel):
     char_start: int = Field(ge=0)
     char_end: int = Field(ge=0)
     quote: NonEmptyString
+    page_start: int | None = Field(default=None, ge=1)
+    page_end: int | None = Field(default=None, ge=1)
+    clause_number: NonEmptyString | None = None
+    heading_path: list[NonEmptyString] | None = None
 
 
 class Obligation(ContractModel):
@@ -132,7 +136,9 @@ class Obligation(ContractModel):
 
 class SearchResult(ContractModel):
     chunk: Chunk
-    score: float = Field(ge=0)
+    score: FiniteFloat
+    rerank_score: FiniteFloat | None = None
+    source: Literal["dense", "sparse", "fused"] | None = None
     citations: list[Citation] = Field(min_length=1)
 
 
@@ -166,11 +172,32 @@ class IngestResponse(ContractModel):
 class SearchRequest(ContractModel):
     query: NonEmptyString
     filters: dict[str, str] | None = None
-    top_k: int = Field(ge=1, le=100)
+    top_k: int = Field(ge=1, le=100, strict=True)
+    debug: StrictBool = False
+
+    @field_validator("query")
+    @classmethod
+    def nonblank_query(cls, value: str) -> str:
+        if not value.strip():
+            raise ValueError("query must contain non-whitespace text")
+        return value
+
+
+class SearchTimings(ContractModel):
+    retrieve: FiniteFloat = Field(ge=0)
+    rerank: FiniteFloat = Field(ge=0)
+    citations: FiniteFloat = Field(ge=0)
+
+
+class SearchDebug(ContractModel):
+    retriever: NonEmptyString
+    reranker: NonEmptyString
+    timings_ms: SearchTimings
 
 
 class SearchResponse(ContractModel):
     results: list[SearchResult]
+    debug: SearchDebug | None = None
 
 
 class ExtractObligationsRequest(ContractModel):

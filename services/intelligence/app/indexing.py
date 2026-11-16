@@ -7,7 +7,6 @@ from collections.abc import Callable, Iterator
 from contextlib import AbstractContextManager, contextmanager
 from dataclasses import asdict
 from datetime import UTC, datetime
-from functools import lru_cache
 from typing import Any
 
 from pydantic import TypeAdapter, ValidationError
@@ -15,8 +14,7 @@ from pydantic import TypeAdapter, ValidationError
 from intellidocs_intelligence.embeddings import (
     Embedder,
     Embedding,
-    embedder_from_env,
-    embedding_settings_key,
+    configured_embedder,
 )
 from intellidocs_intelligence.models import IndexResult, ParseResult
 
@@ -125,14 +123,9 @@ class IndexingService:
             )
 
 
-@lru_cache(maxsize=8)
-def _cached_embedder(settings: tuple[str | None, ...]) -> Embedder:
-    return embedder_from_env()
-
-
 @contextmanager
 def indexer_from_env(storage: Storage) -> Iterator[IndexingService]:
-    embedder = _cached_embedder(embedding_settings_key())
+    embedder = configured_embedder()
     settings = ChunkingConfig.from_env()
     if not os.environ.get("EMBEDDING_BATCH_SIZE"):
         raise ValueError("EMBEDDING_BATCH_SIZE is required")

@@ -170,4 +170,31 @@ named dense/sparse vectors, payload indexes, span-derived UUID identities, and
 document deletion. Set `QDRANT_URL` and `QDRANT_COLLECTION` for Compose, or inject
 an in-memory `QdrantClient` for tests. Dense dimensions are inferred from the
 embedder. [`app/indexing.py`](app/indexing.py) orchestrates chunking, embedding,
-cache persistence, and vector writes. Retrieval/ranking remains deferred.
+cache persistence, and vector writes. The internal retrieval module provides
+hybrid, dense-only, and sparse-only search over indexed chunks.
+[Retriever configuration and usage](app/retrieval/README.md)
+
+`POST /v1/search` retrieves the configured candidate pool, reranks it, and
+returns up to the requested `top_k` results with citations copied from each
+chunk. Include `debug: true` in the JSON body to get stage timings and backend
+names. [Search contract](../../contracts/README.md)
+
+Call `create_reranker().rerank(query, candidates, top_n)` on a retriever's
+candidate pool. Rerankers keep the original retrieval score and source. Scoring
+backends add `rerank_score` and keep retrieval order for ties. The no-op backend
+returns the first `top_n` candidates with their existing scores.
+
+| Environment variable | Default | Purpose |
+| --- | --- | --- |
+| `RERANKER_BACKEND` | `none` | Select `none`, `fake`, or `cross_encoder`. |
+| `RERANKER_MODEL` | `BAAI/bge-reranker-v2-m3` | Single-logit cross-encoder model ID or local directory. |
+| `RERANKER_DEVICE` | `cpu` | PyTorch device. |
+| `RERANKER_BATCH_SIZE` | `8` | Maximum query and chunk pairs per inference batch. |
+| `RERANKER_MAX_LENGTH` | `512` | Token limit for the pair, including special tokens. |
+
+Install the optional backend with `uv sync --extra reranker`. For Docker, include
+`reranker` in `PARSING_EXTRAS`. Provision the model and tokenizer locally before
+running inference. The adapter loads them on the first scoring call and reuses
+them on subsequent calls. It uses the tokenizer's length limit and trims tokens
+from the longer sequence as needed. Scores are the model's raw relevance logits.
+[Default model card](https://huggingface.co/BAAI/bge-reranker-v2-m3)

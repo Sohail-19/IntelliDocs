@@ -7,6 +7,8 @@ from fastapi.responses import JSONResponse
 
 from app.indexing import IndexingFactory, document_tree, indexer_from_env
 from app.ingestion import IngestionService, load_org, storage_from_env
+from app.retrieval.filters import InvalidFilter
+from app.search import SearchFactory, search_from_env
 from app.storage import Storage
 
 from .models import (
@@ -26,6 +28,10 @@ app = FastAPI(title="IntelliDocs Intelligence API", version="v1")
 def get_indexing_factory(storage: Annotated[Storage, Depends(storage_from_env)]) -> IndexingFactory:
     # Defer configuration/model/client construction unless indexing is requested.
     return lambda: indexer_from_env(storage)
+
+
+def get_search_factory() -> SearchFactory:
+    return search_from_env
 
 
 @app.get("/health")
@@ -96,11 +102,19 @@ def index_document(
         raise HTTPException(503, "Indexing failed; retry the stored document") from error
 
 
-@app.post("/v1/search", response_model=SearchResponse)
-def search(request: SearchRequest) -> SearchResponse:
-    """Return an empty, contract-valid result set until retrieval is added."""
-    del request
-    return SearchResponse(results=[])
+@app.post("/v1/search", response_model=SearchResponse, response_model_exclude_none=True)
+def search(
+    request: SearchRequest,
+    search_factory: Annotated[SearchFactory, Depends(get_search_factory)],
+) -> SearchResponse:
+    """Retrieve and rerank chunks with source citations."""
+    try:
+        with search_factory() as service:
+            return service.search(request)
+    except InvalidFilter as error:
+        raise HTTPException(422, str(error)) from error
+    except Exception as error:
+        raise HTTPException(503, "Search service unavailable") from error
 
 
 @app.post("/v1/extract-obligations", response_model=ExtractObligationsResponse)

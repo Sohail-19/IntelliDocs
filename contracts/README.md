@@ -46,3 +46,18 @@ match, while refreshing metadata. Ingest with `index=true` indexes the message
 and its attachments and returns `index_results`. If optional indexing fails,
 ingest returns 503 with the stored `document_id`, `parse_result`, any completed
 `index_results`, and `index_error`; callers can retry each ID through `/v1/index`.
+
+`POST /v1/search` accepts a nonblank `query`, `top_k` from 1 to 100, and an
+optional string map of `filters`. It returns the top results after reranking
+the configured retrieval pool. Each result includes the chunk, the original
+retrieval score, the retrieval source, and a citation. A scoring reranker also
+supplies `rerank_score`. Dense retrieval scores may be negative.
+
+Citations copy the chunk text as `quote` and use zero-based, end-exclusive
+Unicode code-point offsets in canonical document text. Page ranges use one-based
+inclusive bounds. Search fills both bounds from `page` for legacy single-page
+chunks. The clause number is included when available, and an empty heading path
+represents a chunk with no heading context.
+
+Set `debug: true` to receive the retriever and reranker names and elapsed
+milliseconds for retrieval, reranking, and citation construction.
