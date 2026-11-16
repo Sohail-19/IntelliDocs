@@ -15,6 +15,26 @@ from typing import Any
 
 from typing_extensions import TypedDict
 
+from .sparse import Bm25Encoder
+
+
+def embedding_settings_key() -> tuple[str | None, ...]:
+    """All environment settings that select a cached adapter instance."""
+    return tuple(
+        os.environ.get(name)
+        for name in (
+            "EMBEDDING_BACKEND",
+            "EMBEDDING_MODEL",
+            "EMBEDDING_DEVICE",
+            "EMBEDDING_DOCUMENT_PROMPT",
+            "EMBEDDING_QUERY_PROMPT",
+            "SPARSE_EMBEDDING_BACKEND",
+            "BM25_K1",
+            "BM25_B",
+            "BM25_AVG_DOC_LENGTH",
+        )
+    )
+
 
 class SparseVector(TypedDict):
     indices: list[int]
@@ -28,6 +48,8 @@ class Embedding(TypedDict):
 
 class Embedder(ABC):
     model_name: str
+    supports_native_sparse = False
+    sparse_requires_idf = False
 
     def load(self) -> None:
         """Initialize provisioned weights without encoding, for cold-start measurement."""
@@ -43,6 +65,10 @@ class Embedder(ABC):
     def embed(self, texts: Sequence[str]) -> list[Embedding]:
         """Return one dense/sparse embedding per text, in input order."""
 
+    def embed_queries(self, texts: Sequence[str]) -> list[Embedding]:
+        """Models without distinct query prompts share their document representation."""
+        return self.embed(texts)
+
 
 def _texts(texts: Sequence[str]) -> list[str]:
     if isinstance(texts, str) or any(not isinstance(text, str) for text in texts):
@@ -54,6 +80,7 @@ class FakeEmbedder(Embedder):
     """Stable hashing, not semantic embeddings; requires no third-party libraries."""
 
     model_name = "fake-sha256-v1"
+    supports_native_sparse = True
 
     def __init__(self, dimensions: int = 16) -> None:
         if dimensions <= 0:
@@ -91,6 +118,8 @@ class FakeEmbedder(Embedder):
 
 class BgeM3Embedder(Embedder):
     """Load provisioned BGE-M3 weights on the first nonempty embed call."""
+
+    supports_native_sparse = True
 
     def __init__(self, model_name: str | None = None, device: str | None = None) -> None:
         self.model_name = (
@@ -189,12 +218,15 @@ class BgeM3Embedder(Embedder):
 
 
 class SentenceTransformerEmbedder(Embedder):
-    """Offline dense embeddings; sparse vectors are explicitly empty."""
+    """Offline dense adapter; the factory supplies the configured sparse representation."""
 
-    def __init__(self, model_name: str, device: str, prompt: str = "") -> None:
+    def __init__(
+        self, model_name: str, device: str, prompt: str = "", query_prompt: str = ""
+    ) -> None:
         if not model_name.strip() or not device.strip():
             raise ValueError("EMBEDDING_MODEL and EMBEDDING_DEVICE must not be empty")
         self.model_name, self.device, self.prompt = model_name, device, prompt
+        self.query_prompt = query_prompt
         self._model: Any = None
         self._load_lock = Lock()
 
@@ -227,6 +259,12 @@ class SentenceTransformerEmbedder(Embedder):
                         ) from error
 
     def embed(self, texts: Sequence[str]) -> list[Embedding]:
+        return self._encode(texts, self.prompt)
+
+    def embed_queries(self, texts: Sequence[str]) -> list[Embedding]:
+        return self._encode(texts, self.query_prompt)
+
+    def _encode(self, texts: Sequence[str], prompt: str) -> list[Embedding]:
         inputs = _texts(texts)
         if not inputs:
             return []
@@ -235,7 +273,7 @@ class SentenceTransformerEmbedder(Embedder):
         # silently changing the indexed representation. E5 passages need 'passage: '.
         rows = self._model.encode(
             inputs,
-            prompt=self.prompt,
+            prompt=prompt,
             normalize_embeddings=True,
             convert_to_numpy=True,
             show_progress_bar=False,
@@ -255,16 +293,70 @@ class SentenceTransformerEmbedder(Embedder):
         return vectors
 
 
+class SparseOverrideEmbedder(Embedder):
+    """Combine a dense adapter with BM25, or explicitly disable its sparse side."""
+
+    def __init__(self, delegate: Embedder, encoder: Bm25Encoder | None) -> None:
+        self.delegate, self.encoder = delegate, encoder
+        self.model_name = delegate.model_name
+        self.sparse_requires_idf = encoder is not None
+
+    def load(self) -> None:
+        self.delegate.load()
+
+    def cache_key(self) -> dict[str, object]:
+        return {
+            "adapter": f"{type(self).__module__}.{type(self).__qualname__}",
+            "dense": self.delegate.cache_key(),
+            "sparse": self.encoder.cache_key() if self.encoder is not None else "none",
+        }
+
+    def embed(self, texts: Sequence[str]) -> list[Embedding]:
+        return self._encode(texts, query=False)
+
+    def embed_queries(self, texts: Sequence[str]) -> list[Embedding]:
+        return self._encode(texts, query=True)
+
+    def _encode(self, texts: Sequence[str], *, query: bool) -> list[Embedding]:
+        inputs = _texts(texts)
+        vectors = self.delegate.embed_queries(inputs) if query else self.delegate.embed(inputs)
+        if len(vectors) != len(inputs):
+            raise ValueError("Embedder returned the wrong batch size")
+        return [
+            {
+                "dense": vector["dense"],
+                "sparse": (self.encoder.query(text) if query else self.encoder.document(text))
+                if self.encoder is not None
+                else {"indices": [], "values": []},
+            }
+            for text, vector in zip(inputs, vectors, strict=True)
+        ]
+
+
 def embedder_from_env() -> Embedder:
     backend = os.environ.get("EMBEDDING_BACKEND", "fake")
     if backend == "fake":
-        return FakeEmbedder()
-    if backend == "bge_m3":
-        return BgeM3Embedder()
-    if backend == "sentence_transformers":
-        return SentenceTransformerEmbedder(
+        embedder: Embedder = FakeEmbedder()
+    elif backend == "bge_m3":
+        embedder = BgeM3Embedder()
+    elif backend == "sentence_transformers":
+        embedder = SentenceTransformerEmbedder(
             os.environ.get("EMBEDDING_MODEL", ""),
             os.environ.get("EMBEDDING_DEVICE", "cpu"),
             os.environ.get("EMBEDDING_DOCUMENT_PROMPT", ""),
+            os.environ.get("EMBEDDING_QUERY_PROMPT", ""),
         )
-    raise ValueError(f"Unsupported EMBEDDING_BACKEND: {backend!r}")
+    else:
+        raise ValueError(f"Unsupported EMBEDDING_BACKEND: {backend!r}")
+    sparse = os.environ.get("SPARSE_EMBEDDING_BACKEND", "auto")
+    if sparse == "auto":
+        sparse = "native" if embedder.supports_native_sparse else "bm25"
+    if sparse == "native":
+        if not embedder.supports_native_sparse:
+            raise ValueError("Selected embedding backend has no native sparse vectors; use bm25")
+        return embedder
+    if sparse == "bm25":
+        return SparseOverrideEmbedder(embedder, Bm25Encoder.from_env())
+    if sparse == "none":
+        return SparseOverrideEmbedder(embedder, None)
+    raise ValueError(f"Unsupported SPARSE_EMBEDDING_BACKEND: {sparse!r}")

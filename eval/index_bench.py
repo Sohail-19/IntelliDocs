@@ -40,6 +40,7 @@ class MeasuredEmbedder(Embedder):
     def __init__(self, delegate: Embedder) -> None:
         self.delegate = delegate
         self.model_name = delegate.model_name
+        self.sparse_requires_idf = delegate.sparse_requires_idf
         self.load_seconds = 0.0
         self.embed_seconds = 0.0
         self.chunks = 0
@@ -50,6 +51,9 @@ class MeasuredEmbedder(Embedder):
         start = perf_counter()
         self.delegate.load()
         self.load_seconds = perf_counter() - start
+
+    def cache_key(self) -> dict[str, object]:
+        return self.delegate.cache_key()
 
     def embed(self, texts: Sequence[str]) -> list[Embedding]:
         start = perf_counter()

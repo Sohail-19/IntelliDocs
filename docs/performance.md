@@ -15,6 +15,71 @@ No model substitution is needed. Separate fake smoke tests used
 `EMBEDDING_BACKEND=fake` and `fake-sha256-v1`; the benchmark's unset-env default
 remains the fake backend, so a neural benchmark must select its backend explicitly.
 
+Those E5 measurements predate the BM25 fallback: the named Qdrant `sparse`
+vector was explicitly `{"indices": [], "values": []}`. The current default
+`SPARSE_EMBEDDING_BACKEND=auto` now pairs dense-only models, including multilingual
+E5-small, with BM25-style vectors computed from the original chunk text. BGE-M3
+keeps its native learned sparse weights. The historical timing, RSS and snapshot
+numbers below remain unchanged; they do not measure E5 plus BM25 overhead.
+
+Sparse selection is independent of the dense model and is configured only by
+environment variables, forwarded by Compose:
+
+| `SPARSE_EMBEDDING_BACKEND` | Behavior |
+| --- | --- |
+| `auto` (default) | Native sparse for BGE-M3/fake; BM25 for dense-only adapters. |
+| `bm25` | Replace the sparse side with BM25 for either dense backend. |
+| `native` | Preserve model output; rejects a dense-only adapter such as E5. |
+| `none` | Explicitly store empty sparse vectors, for diagnostics/historical runs. |
+
+The BM25 implementation uses only the Python standard library, with no model
+files, downloads, stopword lists, or language-specific defaults. NFKC
+normalization and case folding precede Unicode letter/number tokenization;
+combining marks are preserved, including Hindi vowel signs. Punctuation splits
+words. It does not stem, remove stopwords or segment unspaced languages such as
+Chinese. Terms map to stable unsigned 32-bit SHA-256 prefixes; hash collisions
+are possible and their term counts are merged. Documents and queries must use
+this same tokenizer/hash version, not a FastEmbed tokenizer mixed into the same
+collection.
+
+Stored document weights are
+`tf * (k1 + 1) / (tf + k1 * (1 - b + b * chunk_length / avg_doc_length))`.
+`BM25_K1=1.2`, `BM25_B=0.75` and `BM25_AVG_DOC_LENGTH=400` are configurable
+defaults. The length is the count of these lexical tokens, not the dense model's
+subword tokens. The reference average is fixed by configuration, not estimated
+from each batch or silently inferred from the corpus, so this is BM25-style
+weighting rather than exact BM25 with a fitted corpus-average length.
+
+`embedder_from_env().embed_queries(texts)` supplies binary BM25 query weights
+(one per distinct term), while `embed(texts)` supplies document TF/length weights.
+Both encode sparse terms from raw text, excluding E5's dense `passage: ` and
+`query: ` prompts. Set `EMBEDDING_QUERY_PROMPT="query: "` for E5 alongside
+`EMBEDDING_DOCUMENT_PROMPT="passage: "`. Do not use document weights for queries
+or add IDF yourself: the store enables Qdrant's
+[IDF modifier](https://qdrant.tech/documentation/manage-data/indexing/#idf-modifier)
+only for BM25. IDF is applied at query time from current chunk-point frequencies
+per shard, including changes after upserts/deletes, rather than original-file
+document frequencies. Native BGE-M3 weights use `modifier=none`.
+
+Switch to a **new collection and re-index all documents** when changing sparse
+policy, hashing/tokenization, or BM25 parameters. Old E5 collections lack the
+required `idf` modifier and contain empty vectors; changing the env alone cannot
+backfill them. The store rejects an incompatible IDF modifier before upserting,
+and the embedding cache fingerprint includes the sparse encoder/version and all
+BM25 parameters, preventing reuse of old empty or differently weighted vectors.
+The process adapter cache also includes these settings. Restart the service to
+apply environment changes and use identical settings for indexing and queries.
+Do not mix BGE token IDs and hashed BM25 term IDs in one collection.
+
+The resulting vectors can be queried under the named `dense` and `sparse`
+vectors and fused by rank, such as Qdrant RRF. Tests exercise actual in-memory
+Qdrant sparse scoring and dense/sparse fusion for E5+BM25, BGE-native, and
+BGE+BM25 with mocked neural-model boundaries. They cover English/Hindi matching,
+term saturation, length normalization, stable hashing/collisions, dynamic IDF,
+cache invalidation, and collection compatibility. The existing `/v1/search`
+HTTP stub remains unchanged; this change supplies the representations and query
+encoding method for the retrieval implementation.
+
 The initial 2026-11-15 measurements and the BGE-M3 rerun on 2026-11-16 used
 Python 3.11.17, macOS 27.2.1 arm64 (10 logical CPUs), qdrant-client 1.12.2,
 PyTorch 2.15.0, and Sentence Transformers 6.3.0. BGE-M3 additionally used
@@ -78,7 +143,7 @@ The original smoke-test results, including the fake backend, are retained here:
 All runs acknowledged 60 points. Local indexing, excluding model loading and
 size measurement, took 0.0305 s for the fake SDK run and 0.1116 s for the fake
 server run. The fake model has 16 dense dimensions and hashed sparse vectors;
-E5-small has 384 dense dimensions and this adapter emits **empty sparse vectors**.
+E5-small had 384 dense dimensions and **empty sparse vectors in these historical runs**.
 Its numbers are not evidence for hybrid retrieval quality.
 
 The smoke-test table shows the first run of each configuration. Two more
@@ -234,14 +299,22 @@ export EMBEDDING_BACKEND=sentence_transformers
 export EMBEDDING_MODEL="$PWD/data/index-bench/models/614241f622f53c4eeff9890bdc4f31cfecc418b3"
 export EMBEDDING_DEVICE=cpu
 export EMBEDDING_DOCUMENT_PROMPT="passage: "
-export QDRANT_COLLECTION=chunks_e5_small_v1
+export EMBEDDING_QUERY_PROMPT="query: "
+export SPARSE_EMBEDDING_BACKEND=auto
+export BM25_K1=1.2 BM25_B=0.75 BM25_AVG_DOC_LENGTH=400
+export QDRANT_COLLECTION=chunks_e5_bm25_v1
 uv run --project services/intelligence --no-sync python eval/index_bench.py \
   --documents data/index-bench/parsed --qdrant-url http://localhost:6333
 ```
 
-Use a new collection and re-index every document when changing model or prompt;
-the service's cache fingerprint includes both. Restart the intelligence process
-to apply environment changes. Do not mix embedding spaces even when dimensions
+This command now measures E5 with BM25. To reproduce the historical empty-sparse
+E5 rows, explicitly select `SPARSE_EMBEDDING_BACKEND=none` instead. BM25 adds
+lexical computation and nonempty sparse storage, so remeasure before making new
+latency, RSS, or disk-size claims for that combination.
+
+Use a new collection and re-index every document when changing model, document
+prompt or sparse settings; the service's cache fingerprint includes them.
+Restart the intelligence process to apply environment changes. Do not mix embedding spaces even when dimensions
 happen to match. For Docker, include `sentence-transformers` in `PARSING_EXTRAS`
 and rebuild once, and provision/mount the model directory inside the container
 before selecting its container path in `EMBEDDING_MODEL`. Environment selection
@@ -277,6 +350,8 @@ PY
 export EMBEDDING_BACKEND=bge_m3 EMBEDDING_DEVICE=cpu
 export EMBEDDING_MODEL="$PWD/data/index-bench/models/bge-m3/5617a9f61b028005a4858fdac845db406aefb181"
 export EMBEDDING_DOCUMENT_PROMPT=""
+export EMBEDDING_QUERY_PROMPT=""
+export SPARSE_EMBEDDING_BACKEND=native
 export HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1
 for repeat in 1 2 3; do
   uv run --project services/intelligence --no-sync python eval/index_bench.py \
@@ -291,7 +366,7 @@ per run, as the CLI does by default. It retains those collections for inspection
 Check the benchmark without loading neural models or accessing a network:
 
 ```sh
-services/intelligence/.venv/bin/python -m pytest eval/test_index_bench.py
+services/intelligence/.venv/bin/python -m pytest eval/test_index_bench.py services/intelligence/tests/test_sparse.py
 services/intelligence/.venv/bin/ruff check --config services/intelligence/pyproject.toml eval/index_bench.py eval/test_index_bench.py
 MYPYPATH=services/intelligence/src:services/intelligence \
   services/intelligence/.venv/bin/mypy --strict eval/index_bench.py

@@ -55,6 +55,9 @@ class QdrantStore(VectorStore):
         return cls(QdrantClient(url=url), collection, embedder)
 
     def _ensure_collection(self, dimension: int) -> None:
+        modifier = (
+            models.Modifier.IDF if self.embedder.sparse_requires_idf else models.Modifier.NONE
+        )
         if self._dimension is not None:
             if dimension != self._dimension:
                 raise ValueError("Embedding dimension does not match the initialized collection")
@@ -68,7 +71,9 @@ class QdrantStore(VectorStore):
                         distance=models.Distance.COSINE,
                     )
                 },
-                sparse_vectors_config={self.sparse_vector_name: models.SparseVectorParams()},
+                sparse_vectors_config={
+                    self.sparse_vector_name: models.SparseVectorParams(modifier=modifier)
+                },
             )
         info = self.client.get_collection(self.collection_name)
         vectors = info.config.params.vectors
@@ -82,6 +87,11 @@ class QdrantStore(VectorStore):
         ):
             raise ValueError(
                 "Existing collection has incompatible named vectors or dense dimension"
+            )
+        if (sparse[self.sparse_vector_name].modifier or models.Modifier.NONE) != modifier:
+            raise ValueError(
+                "Existing collection has incompatible sparse IDF modifier; "
+                "use a new collection and re-index"
             )
         for field, schema in PAYLOAD_INDEXES.items():
             existing = info.payload_schema.get(field)

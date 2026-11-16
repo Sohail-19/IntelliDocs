@@ -17,8 +17,9 @@ from app.chunking import Chunker, ChunkingConfig
 from app.indexing import IndexingService
 from app.storage import LocalStorage
 from app.vector_store import QdrantStore
-from intellidocs_intelligence.embeddings import Embedding, FakeEmbedder
+from intellidocs_intelligence.embeddings import Embedding, FakeEmbedder, SparseOverrideEmbedder
 from intellidocs_intelligence.main import app, get_indexing_factory
+from intellidocs_intelligence.sparse import Bm25Encoder
 
 FIXTURES = Path(__file__).parent / "fixtures"
 
@@ -252,6 +253,28 @@ def test_model_identity_invalidates_embedding_cache(pipeline: IndexingService) -
     pipeline.embedder.model_name = "fake-version-2"
     assert pipeline.index(identifier).embedding_model == "fake-version-2"
     assert len(pipeline.embedder.batches) > before
+
+
+def test_sparse_policy_and_parameters_invalidate_persisted_cache(pipeline: IndexingService) -> None:
+    identifier = upload()["document_id"]
+    pipeline.index(identifier)
+    dense = pipeline.embedder
+    assert isinstance(dense, CountingEmbedder) and isinstance(pipeline.store, QdrantStore)
+    before = len(dense.batches)
+    for number, encoder in enumerate([Bm25Encoder(), Bm25Encoder(k1=2.0)]):
+        hybrid = SparseOverrideEmbedder(dense, encoder)
+        store = QdrantStore(pipeline.store.client, f"bm25-{number}", hybrid)
+        service = IndexingService(pipeline.storage, pipeline.chunker, hybrid, store, batch_size=2)
+        indexed = service.index(identifier)
+        assert len(dense.batches) > before
+        before = len(dense.batches)
+        service.index(identifier)
+        assert len(dense.batches) == before
+        points, _ = store.client.scroll(store.collection_name, with_vectors=True)
+        assert len(points) == indexed.chunk_count
+        for point in points:
+            assert point.payload and isinstance(point.vector, dict)
+            assert point.vector["sparse"].model_dump() == encoder.document(point.payload["text"])
 
 
 def test_explicit_metadata_validation(pipeline: IndexingService) -> None:

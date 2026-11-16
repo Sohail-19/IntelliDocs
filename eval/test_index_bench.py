@@ -11,7 +11,7 @@ from app.chunking import Chunker, ChunkingConfig
 from app.vector_store import QdrantStore
 from intellidocs_intelligence.embeddings import FakeEmbedder
 from intellidocs_intelligence.models import ParseResult
-from qdrant_client import QdrantClient
+from qdrant_client import QdrantClient, models
 
 
 @pytest.fixture(autouse=True)
@@ -44,7 +44,7 @@ def sample(identifier: str = "bench-doc") -> ParseResult:
                 "doc_date": "2026-11-15",
                 "pages": [
                     {
-                            "page": 1,
+                        "page": 1,
                         "language": "en",
                         "blocks": [
                             {
@@ -117,7 +117,13 @@ def test_embedding_time_excludes_model_load(monkeypatch: pytest.MonkeyPatch) -> 
     assert embedder.chunks == 2
 
 
-def test_cli_persistent_size_and_incomplete_reports(tmp_path: Path) -> None:
+@pytest.mark.parametrize("sparse_backend", ["native", "bm25"])
+def test_cli_persistent_size_and_incomplete_reports(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    sparse_backend: str,
+) -> None:
+    monkeypatch.setenv("SPARSE_EMBEDDING_BACKEND", sparse_backend)
     corpus = tmp_path / "input"
     corpus.mkdir()
     (corpus / "parse_result.json").write_text(sample().model_dump_json(exclude_none=True))
@@ -141,6 +147,16 @@ def test_cli_persistent_size_and_incomplete_reports(tmp_path: Path) -> None:
     assert report["peak_rss_bytes"] > 0
     assert report["embedding"]["seconds_per_chunk"] >= 0
     assert len(report["input_files"]) == 1
+    client = QdrantClient(path=str(database))
+    try:
+        modifier = (
+            client.get_collection("benchmark").config.params.sparse_vectors["sparse"].modifier
+        )
+        assert modifier == (
+            models.Modifier.IDF if sparse_backend == "bm25" else models.Modifier.NONE
+        )
+    finally:
+        client.close()
     assert bench.main(arguments + ["--overwrite"]) == 1  # Refuses the existing collection.
     (corpus / "broken.json").write_text("not JSON")
     output.unlink()

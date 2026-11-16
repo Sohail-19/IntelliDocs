@@ -145,10 +145,14 @@ as `upload_defaults` in the org config. Request values win, absent values remain
 absent, and dates use YYYY-MM-DD. Department/type must belong to their configured
 org lists when those lists are nonempty. Metadata is propagated to attachments.
 
-The optional `sentence-transformers` extra adds an offline dense-only backend for
-smaller multilingual models, selected by environment variables. See
+The optional `sentence-transformers` extra adds offline dense embeddings for
+smaller multilingual models. `SPARSE_EMBEDDING_BACKEND=auto` pairs these with
+offline BM25-style sparse vectors and retains BGE-M3's native learned weights.
+Use `embedder_from_env()` for the configured pair and `embed_queries()` for query
+vectors. E5 needs `EMBEDDING_QUERY_PROMPT="query: "` alongside its document prompt.
+Sparse policy/parameters are included in embedding-cache fingerprints. See
 [performance results and model switching](../../docs/performance.md) for measured
-E5-small memory/load costs, required prompts, and benchmark commands.
+E5-small memory/load costs, sparse settings, required prompts, and benchmark commands.
 
 ## Structural chunks
 
