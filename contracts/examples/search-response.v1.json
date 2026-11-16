@@ -5,20 +5,35 @@
         "id": "chunk-001",
         "doc_id": "doc-001",
         "page": 2,
+        "page_start": 2,
+        "page_end": 3,
         "char_start": 15,
-        "char_end": 95,
+        "char_end": 85,
+        "clause_number": "3.2",
+        "heading_path": ["Section 3", "3.2"],
         "text": "The supplier must submit the monthly report by the fifth business day."
       },
       "score": 0.89,
+      "rerank_score": 2.4,
+      "source": "fused",
       "citations": [
         {
           "doc_id": "doc-001",
           "page": 2,
+          "page_start": 2,
+          "page_end": 3,
           "char_start": 15,
-          "char_end": 95,
+          "char_end": 85,
+          "clause_number": "3.2",
+          "heading_path": ["Section 3", "3.2"],
           "quote": "The supplier must submit the monthly report by the fifth business day."
         }
       ]
     }
-  ]
+  ],
+  "debug": {
+    "retriever": "HybridRetriever",
+    "reranker": "CrossEncoderReranker",
+    "timings_ms": { "retrieve": 8.1, "rerank": 13.2, "citations": 0.1 }
+  }
 }

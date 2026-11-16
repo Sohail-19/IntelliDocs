@@ -1181,6 +1181,10 @@ parsing = [
     { name = "pycountry" },
     { name = "pypdf" },
 ]
+reranker = [
+    { name = "torch" },
+    { name = "transformers" },
+]
 sentence-transformers = [
     { name = "sentence-transformers" },
 ]
@@ -1233,9 +1237,11 @@ requires-dist = [
     { name = "pyyaml", specifier = ">=6,<7" },
     { name = "qdrant-client", specifier = ">=1.12,<1.13" },
     { name = "sentence-transformers", marker = "extra == 'sentence-transformers'", specifier = ">=3.4,<7" },
+    { name = "torch", marker = "extra == 'reranker'", specifier = ">=2.5,<3" },
+    { name = "transformers", marker = "extra == 'reranker'", specifier = ">=4.48,<6" },
     { name = "uvicorn", specifier = ">=0.30,<1.0" },
 ]
-provides-extras = ["bge-m3", "sentence-transformers", "formats", "parsing", "tesseract", "docling"]
+provides-extras = ["bge-m3", "sentence-transformers", "reranker", "formats", "parsing", "tesseract", "docling"]
 
 [package.metadata.requires-dev]
 dev = [

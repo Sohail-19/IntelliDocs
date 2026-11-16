@@ -7,7 +7,6 @@ from collections.abc import Iterator
 import pytest
 from qdrant_client import QdrantClient, models
 
-from app.indexing import _cached_embedder
 from app.vector_store import QdrantStore
 from intellidocs_intelligence.embeddings import (
     BgeM3Embedder,
@@ -15,6 +14,7 @@ from intellidocs_intelligence.embeddings import (
     FakeEmbedder,
     SentenceTransformerEmbedder,
     SparseOverrideEmbedder,
+    _cached_embedder,
     embedder_from_env,
     embedding_settings_key,
 )

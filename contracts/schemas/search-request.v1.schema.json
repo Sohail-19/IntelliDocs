@@ -6,8 +6,9 @@
   "additionalProperties": false,
   "required": ["query", "top_k"],
   "properties": {
-    "query": { "type": "string", "minLength": 1 },
+    "query": { "type": "string", "minLength": 1, "pattern": "\\S" },
     "filters": { "type": "object", "additionalProperties": { "type": "string" } },
-    "top_k": { "type": "integer", "minimum": 1, "maximum": 100 }
+    "top_k": { "type": "integer", "minimum": 1, "maximum": 100 },
+    "debug": { "type": "boolean" }
   }
 }
