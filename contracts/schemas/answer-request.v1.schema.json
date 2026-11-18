@@ -1,0 +1,14 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "answer-request.v1.schema.json",
+  "title": "AnswerRequest v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["query", "top_k", "language"],
+  "properties": {
+    "query": { "type": "string", "minLength": 1, "pattern": "\\S" },
+    "filters": { "type": "object", "additionalProperties": { "type": "string" } },
+    "top_k": { "type": "integer", "minimum": 1, "maximum": 100 },
+    "language": { "type": "string", "minLength": 2, "description": "Requested answer language." }
+  }
+}

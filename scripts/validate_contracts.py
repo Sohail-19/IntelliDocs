@@ -157,7 +157,7 @@ def validate_openapi(schemas: dict[Path, dict[str, Any]]) -> None:
     spec = load_json(OPENAPI)
     if spec.get("openapi") != "3.1.0" or spec.get("info", {}).get("version") != "v1":
         raise ContractError("contracts/openapi/intelligence.v1.yaml: must be OpenAPI 3.1.0, version v1")
-    expected = {"/health": "get", "/v1/ingest": "post", "/v1/index": "post", "/v1/search": "post", "/v1/extract-obligations": "post"}
+    expected = {"/health": "get", "/v1/ingest": "post", "/v1/index": "post", "/v1/search": "post", "/v1/answer": "post", "/v1/extract-obligations": "post"}
     if set(spec.get("paths", {})) != set(expected):
         raise ContractError("contracts/openapi/intelligence.v1.yaml: paths do not match the v1 contract")
     for endpoint, method in expected.items():

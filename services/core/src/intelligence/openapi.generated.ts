@@ -165,6 +165,46 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/answer": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** @description Contract for a grounded answer with claim-level citations and verification status. */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["answer-request.v1.schema"];
+                };
+            };
+            responses: {
+                /** @description Answer with claims and abstention metadata */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["answer.v1.schema"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/extract-obligations": {
         parameters: {
             query?: never;
@@ -349,6 +389,34 @@ export interface components {
                     citations: number;
                 };
             };
+        };
+        /** AnswerRequest v1 */
+        "answer-request.v1.schema": {
+            query: string;
+            filters?: {
+                [key: string]: string;
+            };
+            top_k: number;
+            /** @description Requested answer language. */
+            language: string;
+        };
+        /** Claim v1 */
+        "claim.v1.schema": {
+            text: string;
+            citations: components["schemas"]["citation.v1.schema"][];
+            /** @enum {string} */
+            status: "verified" | "unverified";
+        };
+        /** Answer v1 */
+        "answer.v1.schema": {
+            answer_text: string;
+            claims: components["schemas"]["claim.v1.schema"][];
+            abstained: boolean;
+            /** @description Reason for abstaining, or an empty string when there is no reason. */
+            abstain_reason: string;
+            retrieved_chunk_ids: string[];
+            model: string;
+            verifier_version: string;
         };
         /** Extract obligations request v1 */
         "extract-obligations-request.v1.schema": {

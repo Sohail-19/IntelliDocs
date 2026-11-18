@@ -5,6 +5,7 @@ from typing import Annotated
 from fastapi import Depends, FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.responses import JSONResponse
 
+from app.answering import AnswerFactory, answerer_from_env
 from app.indexing import IndexingFactory, document_tree, indexer_from_env
 from app.ingestion import IngestionService, load_org, storage_from_env
 from app.retrieval.filters import InvalidFilter
@@ -12,6 +13,8 @@ from app.search import SearchFactory, search_from_env
 from app.storage import Storage
 
 from .models import (
+    Answer,
+    AnswerRequest,
     ExtractObligationsRequest,
     ExtractObligationsResponse,
     IndexRequest,
@@ -32,6 +35,10 @@ def get_indexing_factory(storage: Annotated[Storage, Depends(storage_from_env)])
 
 def get_search_factory() -> SearchFactory:
     return search_from_env
+
+
+def get_answer_factory(storage: Annotated[Storage, Depends(storage_from_env)]) -> AnswerFactory:
+    return lambda: answerer_from_env(storage)
 
 
 @app.get("/health")
@@ -115,6 +122,21 @@ def search(
         raise HTTPException(422, str(error)) from error
     except Exception as error:
         raise HTTPException(503, "Search service unavailable") from error
+
+
+@app.post("/v1/answer", response_model=Answer, response_model_exclude_none=True)
+def answer(
+    request: AnswerRequest,
+    answer_factory: Annotated[AnswerFactory, Depends(get_answer_factory)],
+) -> Answer:
+    """Return only source-verified claims, or an explicit abstention."""
+    try:
+        with answer_factory() as service:
+            return service.answer(request)
+    except InvalidFilter as error:
+        raise HTTPException(422, str(error)) from error
+    except Exception as error:
+        raise HTTPException(503, "Answer service unavailable") from error
 
 
 @app.post("/v1/extract-obligations", response_model=ExtractObligationsResponse)

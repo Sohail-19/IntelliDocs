@@ -73,3 +73,77 @@ by Git. Use `--output PATH` to keep another run or `--overwrite` to replace an
 existing report. The sample checks the pipeline on five synthetic queries.
 Use representative human-labeled queries and a fixed corpus to report
 retrieval quality on real documents.
+
+## Answer evaluation
+
+[`answers/evaluate_answers.py`](answers/evaluate_answers.py) runs retrieval,
+reranking, generation, and verification in process. Its default `--mode both`
+generates drafts once per query and scores the same drafts before and after
+verification. `--mode baseline` retains every generated claim and never invokes
+the verifier or its optional support LLM. The HTTP answer route always verifies.
+
+The gold set is UTF-8 JSONL, one record per query:
+
+```jsonl
+{"id":"deadline","query":"When are reports due?","language":"en","expected_answer_points":[{"text":"Reports must be submitted by Friday.","aliases":["Reports are due Friday."]}],"relevant":[{"doc_id":"reports","page":2}],"answerable":true}
+{"id":"unknown","query":"Are travel expenses reimbursed?","language":"en","expected_answer_points":[],"relevant":[],"answerable":false}
+```
+
+`expected_answer_points` accepts strings or objects with `text` and optional
+human-authored `aliases`. `relevant` lists the supporting document IDs and
+one-based pages. Answerable questions require nonempty points and sources;
+unanswerable questions require both lists to be empty. IDs must be unique.
+`language` may be omitted only when `--language` explicitly supplies the answer
+language. Optional `filters` use the search filter format and apply in both modes.
+
+Scoring uses gold labels independently of the verifier's status. A claim must
+match a gold point or alias after canonical Unicode normalization, whitespace
+folding, and case folding. Its citation must also slice back to the actual
+retrieved source and identify a relevant document/page. This is a conservative
+exact-label evaluation: valid paraphrases without an annotated alias count as
+unsupported. It does not provide an automatic semantic judgment. Include
+representative human-authored aliases and audit the saved claims for a report.
+
+- **Citation precision**: correct citations divided by attempted citations.
+  An unresolved chunk ID or quote still counts as one failed citation attempt.
+- **Unsupported-claim rate**: claims without a gold-supported, traceable citation
+  divided by generated/displayed claims, separately for baseline and verified.
+- **Abstention on unanswerable questions**: unanswerable queries with no output
+  claims divided by all unanswerable queries.
+- **Answer coverage**: distinct gold points covered by supported output claims
+  divided by all expected points across answerable questions. Duplicate claims
+  cannot increase coverage. Abstained answerable questions contribute zero.
+
+Rates use aggregate counts, saved alongside per-query outputs. A zero denominator
+produces JSON `null` and table `n/a`, rather than a perfect score. Generation
+validation failures are recorded per query and yield empty output claims.
+
+Run the bundled synthetic fixture with no model weights or external calls:
+
+```sh
+EMBEDDING_BACKEND=fake SPARSE_EMBEDDING_BACKEND=native RERANKER_BACKEND=fake \
+  VERIFICATION_SUPPORT_CHECK=false \
+  uv run --project services/intelligence --no-sync python eval/answers/evaluate_answers.py \
+  --responses eval/answers/sample_responses.json
+```
+
+The fixture deliberately contains two unsupported drafts and one missed answer
+point. Baseline versus verified scores are respectively: citation precision
+`0.50 / 1.00`, unsupported claims `0.50 / 0.00`, abstention on unanswerable
+questions `0.00 / 1.00`, and coverage `0.667 / 0.667`. These are fixture checks,
+not measurements of real model quality.
+
+For model evaluation, omit `--responses` and configure the existing `LLM_*`,
+embedding, retrieval, reranking, and verification settings. Supply `--gold PATH`
+and either `--chunks PATH` (temporary in-memory Qdrant) or `--existing-index`
+(configured Qdrant collection). The latter requires `STORAGE_DIR` or
+`--storage-root PATH` to load original ParseResults. With `--chunks`, use
+`--storage-root` explicitly for canonical page mapping; without it only
+single-page chunk citations can be resolved. Keep the collection and stored
+documents fixed for comparisons. LLM determinism depends on the configured
+provider; paired modes share the same draft regardless.
+
+Reports default to ignored `eval/results/answers_<UTC-date>.json`; `--output`
+selects another path and `--overwrite` permits replacement. Reports contain
+input hashes, model/settings, prompt hashes, a Python random seed, both metric
+sets, and per-query outputs for review. No verifier bypass is exposed by HTTP.

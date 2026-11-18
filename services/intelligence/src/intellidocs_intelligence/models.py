@@ -200,6 +200,29 @@ class SearchResponse(ContractModel):
     debug: SearchDebug | None = None
 
 
+class AnswerRequest(ContractModel):
+    query: NonEmptyString = Field(pattern=r"\S")
+    filters: dict[str, str] | None = None
+    top_k: int = Field(ge=1, le=100, strict=True)
+    language: LanguageCode
+
+
+class Claim(ContractModel):
+    text: NonEmptyString
+    citations: list[Citation]
+    status: Literal["verified", "unverified"]
+
+
+class Answer(ContractModel):
+    answer_text: str
+    claims: list[Claim]
+    abstained: StrictBool
+    abstain_reason: str
+    retrieved_chunk_ids: list[NonEmptyString]
+    model: NonEmptyString
+    verifier_version: NonEmptyString
+
+
 class ExtractObligationsRequest(ContractModel):
     doc_id: NonEmptyString
 

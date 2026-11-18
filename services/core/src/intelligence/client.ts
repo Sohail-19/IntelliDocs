@@ -28,6 +28,9 @@ export type IngestResponse = Omit<Schemas['ingest-response.v1.schema'], 'parse_r
 };
 export type SearchRequest = Schemas['search-request.v1.schema'];
 export type SearchResponse = Schemas['search-response.v1.schema'];
+export type AnswerRequest = Schemas['answer-request.v1.schema'];
+export type Claim = Schemas['claim.v1.schema'];
+export type Answer = Schemas['answer.v1.schema'];
 export type ExtractObligationsRequest = Schemas['extract-obligations-request.v1.schema'];
 export type ExtractObligationsResponse = Schemas['extract-obligations-response.v1.schema'];
 
@@ -79,6 +82,10 @@ export class IntelligenceClient {
 
   search(request: SearchRequest): Promise<SearchResponse> {
     return this.post('/v1/search', request);
+  }
+
+  answer(request: AnswerRequest): Promise<Answer> {
+    return this.post('/v1/answer', request);
   }
 
   extractObligations(request: ExtractObligationsRequest): Promise<ExtractObligationsResponse> {

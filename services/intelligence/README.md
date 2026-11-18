@@ -198,3 +198,28 @@ running inference. The adapter loads them on the first scoring call and reuses
 them on subsequent calls. It uses the tokenizer's length limit and trims tokens
 from the longer sequence as needed. Scores are the model's raw relevance logits.
 [Default model card](https://huggingface.co/BAAI/bge-reranker-v2-m3)
+
+## Grounded answers
+
+`POST /v1/answer` accepts `query`, `language`, `top_k`, and optional `filters`
+from the v1 AnswerRequest contract. It retrieves the full candidate pool,
+reranks to `top_k`, generates draft claims in the requested language, and
+verifies their quotes against retrieved chunks and stored ParseResults.
+
+```sh
+curl http://localhost:8000/v1/answer \
+  -H 'content-type: application/json' \
+  -d '{"query":"When is the report due?","language":"en","top_k":5}'
+```
+
+The returned Answer includes only verified claims and their source citations.
+Missing source files, unsupported drafts, empty retrieval, and exhausted
+generation-validation retries produce an abstention when no verified claim
+remains. Invalid requests/filters return 422; unavailable pipeline dependencies
+return 503. HTTP does not accept a verifier-off flag.
+
+Set `STORAGE_DIR` to the directory used during ingestion and indexing, and
+configure the existing `LLM_*`, retrieval, reranking, and verification settings.
+[Generation settings](app/generation/README.md) ·
+[Citation and optional support verification](app/verification/README.md) ·
+[Paired answer evaluation](../../eval/README.md#answer-evaluation)
