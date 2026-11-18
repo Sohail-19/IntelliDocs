@@ -1,0 +1,13 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "claim.v1.schema.json",
+  "title": "Claim v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["text", "citations", "status"],
+  "properties": {
+    "text": { "type": "string", "minLength": 1 },
+    "citations": { "type": "array", "items": { "$ref": "citation.v1.schema.json" } },
+    "status": { "type": "string", "enum": ["verified", "unverified"] }
+  }
+}

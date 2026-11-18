@@ -1,0 +1,13 @@
+{
+  "report": {"claims": [
+    {"text": "Reports must be submitted by Friday.", "chunk_id": "reports-2", "quote": "Reports must be submitted by Friday."},
+    {"text": "Late reports are fined.", "chunk_id": "reports-2", "quote": "Late reports are fined."}
+  ]},
+  "notice": {"claims": [
+    {"text": "सूचना सात दिनों में भेजनी होगी।", "chunk_id": "notices-1", "quote": "सूचना सात दिनों में भेजनी होगी।"}
+  ]},
+  "travel": {"claims": [
+    {"text": "Travel expenses are reimbursed.", "chunk_id": "not-retrieved", "quote": "Travel expenses are reimbursed."}
+  ]},
+  "fee": {"claims": []}
+}

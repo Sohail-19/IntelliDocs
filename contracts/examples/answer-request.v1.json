@@ -1,0 +1,6 @@
+{
+  "query": "When must the supplier submit the monthly report?",
+  "filters": { "doc_type": "agreement" },
+  "top_k": 5,
+  "language": "en"
+}

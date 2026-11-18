@@ -36,6 +36,15 @@
         }
       }
     },
+    "/v1/answer": {
+      "post": {
+        "description": "Contract for a grounded answer with claim-level citations and verification status.",
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "../schemas/answer-request.v1.schema.json" } } } },
+        "responses": {
+          "200": { "description": "Answer with claims and abstention metadata", "content": { "application/json": { "schema": { "$ref": "../schemas/answer.v1.schema.json" } } } }
+        }
+      }
+    },
     "/v1/extract-obligations": {
       "post": {
         "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "../schemas/extract-obligations-request.v1.schema.json" } } } },

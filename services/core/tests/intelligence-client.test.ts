@@ -35,8 +35,14 @@ describe('intelligence client', () => {
     await client.search({ query: 'deadline', top_k: 3, filters: { language: 'hi' }, debug: true });
     await client.extractObligations({ doc_id: 'doc-001' });
     await client.index({ doc_id: 'doc-001' });
+    await client.answer({
+      query: 'deadline',
+      top_k: 3,
+      language: 'hi',
+      filters: { doc_id: 'doc-001' },
+    });
 
-    expect(requests).toHaveLength(5);
+    expect(requests).toHaveLength(6);
     expect(requests[0]).toMatchObject({ url: 'https://intelligence.example/health' });
     expect(requests[1]?.url).toBe('https://intelligence.example/v1/ingest');
     expect(requests[1]?.init?.method).toBe('POST');
@@ -78,6 +84,19 @@ describe('intelligence client', () => {
           method: 'POST',
           headers: { 'content-type': 'application/json' },
           body: JSON.stringify({ doc_id: 'doc-001' }),
+        },
+      },
+      {
+        url: 'https://intelligence.example/v1/answer',
+        init: {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({
+            query: 'deadline',
+            top_k: 3,
+            language: 'hi',
+            filters: { doc_id: 'doc-001' },
+          }),
         },
       },
     ]);

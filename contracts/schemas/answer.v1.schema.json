@@ -1,0 +1,20 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "answer.v1.schema.json",
+  "title": "Answer v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "answer_text", "claims", "abstained", "abstain_reason",
+    "retrieved_chunk_ids", "model", "verifier_version"
+  ],
+  "properties": {
+    "answer_text": { "type": "string" },
+    "claims": { "type": "array", "items": { "$ref": "claim.v1.schema.json" } },
+    "abstained": { "type": "boolean" },
+    "abstain_reason": { "type": "string", "description": "Reason for abstaining, or an empty string when there is no reason." },
+    "retrieved_chunk_ids": { "type": "array", "items": { "type": "string", "minLength": 1 } },
+    "model": { "type": "string", "minLength": 1 },
+    "verifier_version": { "type": "string", "minLength": 1 }
+  }
+}

@@ -61,3 +61,14 @@ represents a chunk with no heading context.
 
 Set `debug: true` to receive the retriever and reranker names and elapsed
 milliseconds for retrieval, reranking, and citation construction.
+
+The Phase 4 answer contract defines `POST /v1/answer` with an `AnswerRequest`
+body and an `Answer` response. Requests require a nonblank `query`, `top_k`
+from 1 to 100, and a requested `language`. Optional `filters` use the search
+contract's string-map shape.
+
+An answer includes `answer_text`, `claims`, `abstained`, `abstain_reason`,
+`retrieved_chunk_ids`, `model`, and `verifier_version`. Each claim contains
+text, citations using the existing Citation schema, and a `verified` or
+`unverified` status. Empty `answer_text` and `claims` arrays can represent abstention.
+An empty `abstain_reason` represents an answer with no abstention reason.

@@ -1,0 +1,6 @@
+$original_prompt
+
+RETRY $attempt
+The previous response failed JSON parsing or the required output schema.
+Generate the response again using REQUEST_JSON and OUTPUT_SCHEMA above.
+Return one JSON object with a claims list, without Markdown or commentary.

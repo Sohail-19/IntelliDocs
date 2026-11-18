@@ -1,11 +1,12 @@
 import express from 'express';
+import { answerRouter } from './answer.js';
 import type { IntelligenceClient } from './intelligence/client.js';
 import { searchRouter } from './search.js';
 import { uploadRouter } from './upload.js';
 import type { UploadDependencies } from './upload.js';
 
 type AppDependencies = UploadDependencies & {
-  intelligence: Partial<Pick<IntelligenceClient, 'search'>>;
+  intelligence: Partial<Pick<IntelligenceClient, 'search' | 'answer'>>;
 };
 
 export function createApp(dependencies?: AppDependencies): express.Express {
@@ -18,6 +19,7 @@ export function createApp(dependencies?: AppDependencies): express.Express {
     app.use(uploadRouter(dependencies));
     const { intelligence } = dependencies;
     if (intelligence.search) app.use(searchRouter(intelligence.search.bind(intelligence)));
+    if (intelligence.answer) app.use(answerRouter(intelligence.answer.bind(intelligence)));
   }
   app.use(
     (

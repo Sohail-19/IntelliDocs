@@ -42,3 +42,20 @@ curl -G http://localhost:3000/api/search \
 Core forwards the query to intelligence and validates the v1 response before
 returning the `results` envelope. Invalid input returns 422. An unavailable
 intelligence service or an invalid upstream response returns 502.
+
+`GET /api/answer` accepts required `query`, `language`, and `top_k` parameters
+plus the same filter forms. Use `filters[language]` to filter source language
+separately from the requested answer language.
+
+```sh
+curl -G http://localhost:3000/api/answer \
+  --data-urlencode 'query=monthly report deadline' \
+  --data-urlencode 'language=en' \
+  --data-urlencode 'top_k=5'
+```
+
+The typed client forwards to intelligence's `POST /v1/answer`. Core validates
+the Answer contract and rejects unverified claims, missing citations, or answer
+text outside the verified claim list. Valid abstentions pass through. Invalid
+input returns 422; unavailable intelligence or invalid upstream output returns
+502. Verification cannot be disabled through this route.
