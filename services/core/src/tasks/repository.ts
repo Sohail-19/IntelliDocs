@@ -5,6 +5,12 @@ import { inTransaction, writeAudit } from '../audit.js';
 import type { AuditContext } from '../audit.js';
 import type { Principal } from '../auth/policy.js';
 import { normalizedDeadline, resolvedDeadline } from '../obligation-values.js';
+import {
+  effectiveAction,
+  effectiveCitations,
+  pendingStale,
+  pendingStaleIds,
+} from '../relations/staleness.js';
 import { allowedUserTransitions, taskTransition } from './workflow.js';
 import type { TaskState, TaskStatus } from './workflow.js';
 
@@ -24,7 +30,10 @@ function toTask({ obligation_status, ...row }: TaskRow, canTransition: boolean):
   return {
     ...row,
     allowed_transitions:
-      canTransition && obligation_status !== 'needs_review' && obligation_status !== 'rejected'
+      canTransition &&
+      !row.stale &&
+      obligation_status !== 'needs_review' &&
+      obligation_status !== 'rejected'
         ? allowedUserTransitions(row.status)
         : [],
   };
@@ -80,7 +89,12 @@ export class TaskRepository {
     private readonly reviewRoles: ReadonlyMap<string, string>,
   ) {}
 
-  async feed(actor: Principal, filters: TaskFilters, canTransition: boolean): Promise<TaskFeed> {
+  async feed(
+    actor: Principal,
+    filters: TaskFilters,
+    canTransition: boolean,
+    reviewStale = false,
+  ): Promise<TaskFeed> {
     const [rows, membership] = await Promise.all([
       this.visibleTasks(this.pool, actor, filters),
       this.pool.query<{ department_id: number | null }>(
@@ -92,11 +106,12 @@ export class TaskRepository {
     if (membership.rows[0]?.department_id != null) available_scopes.push('department');
     const reviewRole = this.reviewRoles.get(actor.orgSlug);
     if (reviewRole && actor.roles.includes(reviewRole)) available_scopes.push('review');
+    if (reviewStale) available_scopes.push('stale');
     return { tasks: rows.map((row) => toTask(row, canTransition)), available_scopes };
   }
 
   async hasVisibleTask(actor: Principal, docId: string): Promise<boolean> {
-    return (await this.visibleTasks(this.pool, actor, { doc_id: docId })).length > 0;
+    return (await this.visibleTasks(this.pool, actor, {}, undefined, docId)).length > 0;
   }
 
   async transition(
@@ -112,6 +127,7 @@ export class TaskRepository {
       // Assignment changes take the same obligation lock. Check visibility after acquiring it.
       const [task] = await this.visibleTasks(client, actor, {}, id);
       if (!task) return 'missing';
+      if (task.stale) return 'invalid';
       if (locked.obligation_status === 'needs_review' || locked.obligation_status === 'rejected')
         return 'invalid';
       const next = taskTransition(task.status, status, reason, 'user');
@@ -133,6 +149,7 @@ export class TaskRepository {
     actor: Principal,
     filters: TaskFilters,
     id?: number,
+    sourceDocId?: string,
   ) {
     const clauses = ['scope IS NOT NULL'];
     const params: (string | number | string[] | null)[] = [
@@ -153,13 +170,29 @@ export class TaskRepository {
       params.push(value);
       clauses.push(predicate + ' $' + params.length);
     }
+    if (sourceDocId !== undefined) {
+      params.push(sourceDocId, JSON.stringify([{ doc_id: sourceDocId }]));
+      clauses.push(
+        '(doc_id = $' + (params.length - 1) + ' OR citations @> $' + params.length + '::jsonb)',
+      );
+    }
     const { rows } = await client.query<TaskRow>(
       "SELECT *, status = 'overdue' OR (status NOT IN ('done', 'rejected') AND COALESCE(due_date < (CURRENT_TIMESTAMP AT TIME ZONE 'UTC')::date::text, false)) AS overdue FROM (" +
-        'SELECT o.id, o.external_id AS obligation_id, d.external_id AS doc_id, o.action, ' +
-        'o.task_status AS status, o.status AS obligation_status, o.task_rejection_reason AS rejection_reason, o.citations, ' +
+        'SELECT o.id, o.external_id AS obligation_id, d.external_id AS doc_id, ' +
+        effectiveAction +
+        ' AS action, ' +
+        effectiveCitations +
+        ' AS citations, ' +
+        pendingStale +
+        ' AS stale, ' +
+        pendingStaleIds +
+        ' AS stale_relation_ids, ' +
+        'o.task_status AS status, o.status AS obligation_status, o.task_rejection_reason AS rejection_reason, ' +
         taskDueDate +
         ' AS due_date, a.assignee_user_id, a.queue_type, a.queue_name, COALESCE(assignee.name, a.queue_name) AS owner, ' +
-        "CASE WHEN a.assignee_user_id = u.id THEN 'mine' " +
+        'CASE ' +
+        (filters.scope === 'stale' ? 'WHEN ' + pendingStale + " THEN 'stale' " : '') +
+        "WHEN a.assignee_user_id = u.id THEN 'mine' " +
         "WHEN a.queue_type = 'department' AND a.queue_name = dep.name THEN 'department' " +
         "WHEN a.queue_type = 'role' AND a.queue_name = ANY($3::text[]) THEN " +
         "CASE WHEN a.queue_name = $4 THEN 'review' ELSE 'mine' END END AS scope " +

@@ -4,5 +4,19 @@
   "action": "Submit the reconciliation ledger",
   "owner_text": "Finance Department",
   "deadline_text": "2099-12-31",
-  "obligation_type": "reporting"
+  "obligation_type": "reporting",
+  "original": {
+    "filename": "circular-RC-178.pdf",
+    "date": "2025-01-15",
+    "quote": "Finance Department must file the monthly register by 2099-11-30.",
+    "action": "File the monthly register",
+    "owner_text": "Finance Department",
+    "deadline_text": "2099-11-30",
+    "obligation_type": "reporting"
+  },
+  "amendment": {
+    "filename": "circular-RC-196.pdf",
+    "date": "2025-02-15",
+    "quote": "Clause 1 of Circular No. RC-178 dated 2025-01-15 is amended: file the register every Friday."
+  }
 }

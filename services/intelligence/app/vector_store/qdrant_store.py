@@ -7,6 +7,7 @@ from threading import RLock
 
 from qdrant_client import QdrantClient, models
 
+from app.relations.signals import RELATION_KEYS_FIELD, indexed_keys
 from intellidocs_intelligence.chunk_ids import chunk_id
 from intellidocs_intelligence.embeddings import Embedder, Embedding
 from intellidocs_intelligence.models import Chunk
@@ -20,7 +21,16 @@ PAYLOAD_INDEXES = {
     "doc_date": models.PayloadSchemaType.DATETIME,
     "language": models.PayloadSchemaType.KEYWORD,
     "doc_id": models.PayloadSchemaType.KEYWORD,
+    RELATION_KEYS_FIELD: models.PayloadSchemaType.KEYWORD,
 }
+
+
+def chunk_from_payload(payload: models.Payload | None) -> Chunk:
+    if payload is None:
+        raise ValueError("Indexed chunk has no payload")
+    return Chunk.model_validate(
+        {key: value for key, value in payload.items() if key != RELATION_KEYS_FIELD}
+    )
 
 
 class QdrantStore(VectorStore):
@@ -121,7 +131,11 @@ class QdrantStore(VectorStore):
             raise ValueError("Sparse values must be finite")
 
     def upsert_chunks(
-        self, chunks: Sequence[Chunk], embeddings: Sequence[Embedding] | None = None
+        self,
+        chunks: Sequence[Chunk],
+        embeddings: Sequence[Embedding] | None = None,
+        *,
+        document_title: str | None = None,
     ) -> int:
         if not chunks:
             return 0
@@ -142,14 +156,20 @@ class QdrantStore(VectorStore):
             for vector in embeddings:
                 self._validate_vector(vector, dimension)
             points = []
-            for identifier, chunk, vector in zip(identifiers, chunks, embeddings, strict=True):
+            for index, (identifier, chunk, vector) in enumerate(
+                zip(identifiers, chunks, embeddings, strict=True)
+            ):
                 sparse = sorted(
                     zip(vector["sparse"]["indices"], vector["sparse"]["values"], strict=True)
                 )
+                payload = chunk.model_dump(mode="json", exclude_none=True)
+                if chunk.org_id:
+                    title = document_title if index == 0 else None
+                    payload[RELATION_KEYS_FIELD] = sorted(indexed_keys(chunk, title=title))
                 points.append(
                     models.PointStruct(
                         id=identifier,
-                        payload=chunk.model_dump(mode="json", exclude_none=True),
+                        payload=payload,
                         vector={
                             self.dense_vector_name: [float(value) for value in vector["dense"]],
                             self.sparse_vector_name: models.SparseVector(
@@ -188,13 +208,18 @@ class QdrantStore(VectorStore):
                 ),
             )
 
-    def load_document_chunks(self, doc_id: str) -> list[Chunk]:
+    def load_document_chunks(self, doc_id: str, *, org_id: str | None = None) -> list[Chunk]:
         """Read all indexed chunks for one document without querying vectors."""
         if not self.client.collection_exists(self.collection_name):
             return []
-        where = models.Filter(
-            must=[models.FieldCondition(key="doc_id", match=models.MatchValue(value=doc_id))]
-        )
+        conditions: list[models.Condition] = [
+            models.FieldCondition(key="doc_id", match=models.MatchValue(value=doc_id))
+        ]
+        if org_id is not None:
+            conditions.append(
+                models.FieldCondition(key="org_id", match=models.MatchValue(value=org_id))
+            )
+        where = models.Filter(must=conditions)
         chunks: list[Chunk] = []
         offset = None
         while True:
@@ -206,7 +231,7 @@ class QdrantStore(VectorStore):
                 with_payload=True,
                 with_vectors=False,
             )
-            chunks.extend(Chunk.model_validate(point.payload) for point in page)
+            chunks.extend(chunk_from_payload(point.payload) for point in page)
             if offset is None:
                 break
         return sorted(chunks, key=lambda chunk: (chunk.char_start, chunk.char_end, chunk.id))

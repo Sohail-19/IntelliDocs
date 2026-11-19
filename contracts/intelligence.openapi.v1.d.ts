@@ -299,6 +299,46 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/detect-relations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** @description Propose relations from the indexed document using evidence from both documents and flag proposals that need review. */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["detect-relations-request.v1.schema"];
+                };
+            };
+            responses: {
+                /** @description Relation proposals with verified citations, confidence contributions, and warnings */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["relation-result.v1.schema"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -569,6 +609,49 @@ export interface components {
             obligations: components["schemas"]["obligation.v1.schema"][];
             warnings: string[];
             stats: components["schemas"]["extraction-stats.v1.schema"];
+        };
+        /** DetectRelationsRequest v1 */
+        "detect-relations-request.v1.schema": {
+            doc_id: string;
+        };
+        /** DocumentRelation v1 */
+        "document-relation.v1.schema": {
+            id: string;
+            /** @description ID of the newer document. */
+            source_doc_id: string;
+            /** @description ID of the older document. */
+            target_doc_id: string;
+            /** @enum {string} */
+            relation_type: "supersedes" | "amends" | "withdraws" | "conflicts_with" | "references";
+            /** @enum {string} */
+            scope: "whole_document" | "clauses";
+            /** @description Evidence spans in the newer document. */
+            source_citations: components["schemas"]["citation.v1.schema"][];
+            /** @description Evidence spans in the older document. */
+            target_citations: components["schemas"]["citation.v1.schema"][];
+            confidence: number;
+            /** @description Deterministic evidence contributions that sum to confidence. */
+            confidence_breakdown?: {
+                explicit_reference: number;
+                both_quotes_verified: number;
+                date_order_consistent: number;
+                recognized_cue: number;
+            };
+            /** @enum {string} */
+            status: "proposed" | "confirmed" | "dismissed";
+            /** @description Human review is needed before the proposal is accepted. */
+            needs_review?: boolean;
+            /** @description Identifier of the detector that proposed the relation. */
+            detected_by: string;
+            /** Format: date-time */
+            created_at: string;
+        };
+        /** RelationResult v1 */
+        "relation-result.v1.schema": {
+            /** @description ID of the document submitted for detection. */
+            doc_id: string;
+            relations: components["schemas"]["document-relation.v1.schema"][];
+            warnings: string[];
         };
     };
     responses: never;

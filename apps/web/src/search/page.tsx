@@ -12,6 +12,7 @@ import type {
 } from '../../../../contracts/core-api.v1.js';
 import { ApiError } from '../api.js';
 import { useAuth } from '../auth.js';
+import { AuthorityWarnings } from '../relations/authority.js';
 import { EmptyState, ErrorState, LoadingState } from '../states.js';
 import { CitationChips, CitationPanel } from './citation-panel.js';
 import './search.css';
@@ -89,6 +90,7 @@ function ResultList({
                   : ' · Rerank ' + result.rerank_score.toFixed(3)}
               </span>
             </div>
+            <AuthorityWarnings warnings={result.authority_warnings} stale={result.stale} />
             <p>{result.chunk.text}</p>
           </li>
         ))}
@@ -320,7 +322,13 @@ export function SearchPage() {
         <ResultList results={request.data.results} open={setCitation} />
       )}
       {request.data?.mode === 'ask' && mode === 'ask' && (
-        <AnswerView answer={request.data.answer} open={setCitation} />
+        <>
+          <AuthorityWarnings
+            warnings={request.data.answer.authority_warnings}
+            stale={request.data.answer.stale_sources}
+          />
+          <AnswerView answer={request.data.answer} open={setCitation} />
+        </>
       )}
       {selectedCitation && (
         <CitationPanel

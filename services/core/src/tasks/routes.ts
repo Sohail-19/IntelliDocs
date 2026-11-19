@@ -16,7 +16,8 @@ function parseFilters(query: Record<string, unknown>): TaskFilters | undefined {
     }
     switch (key) {
       case 'scope':
-        if (value !== 'mine' && value !== 'department' && value !== 'review') return undefined;
+        if (value !== 'mine' && value !== 'department' && value !== 'review' && value !== 'stale')
+          return undefined;
         filters.scope = value;
         break;
       case 'status':
@@ -43,6 +44,7 @@ export function taskRouter(
   repository: TaskRepository,
   guard: Guard,
   canTransition: (actor: Principal) => boolean = () => false,
+  canReviewRelations: (actor: Principal) => boolean = () => false,
 ): Router {
   const router = Router();
   router.get('/api/tasks', guard('tasks:read'), (request, response, next) => {
@@ -53,8 +55,13 @@ export function taskRouter(
     }
     response.set('Cache-Control', 'no-store');
     const actor = principal(response);
+    const reviewStale = canReviewRelations(actor);
+    if (filters.scope === 'stale' && !reviewStale) {
+      response.status(403).json({ error: 'Relation review permission is required' });
+      return;
+    }
     void repository
-      .feed(actor, filters, canTransition(actor))
+      .feed(actor, filters, canTransition(actor), reviewStale)
       .then((feed) => {
         response.json(feed);
       })

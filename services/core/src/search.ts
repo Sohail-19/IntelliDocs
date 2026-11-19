@@ -8,6 +8,8 @@ import { principal } from './auth/routes.js';
 import type { Guard } from './auth/routes.js';
 import { IntelligenceError } from './intelligence/client.js';
 import type { IntelligenceClient, SearchRequest, SearchResponse } from './intelligence/client.js';
+import { authorityWarnings } from './relations/staleness.js';
+import type { PostgresRelationRepository } from './relations/repository.js';
 
 const ajv = new Ajv2020({ strict: true });
 addFormats.default(ajv);
@@ -18,7 +20,11 @@ for (const name of ['chunk', 'citation', 'search-result', 'search-request', 'sea
 const validateRequest = ajv.compile<SearchRequest>({ $ref: 'search-request.v1.schema.json' });
 const validateResponse = ajv.compile<SearchResponse>({ $ref: 'search-response.v1.schema.json' });
 
-export function searchRouter(search: IntelligenceClient['search'], guard: Guard): Router {
+export function searchRouter(
+  search: IntelligenceClient['search'],
+  guard: Guard,
+  relations?: Pick<PostgresRelationRepository, 'confirmedChanges'>,
+): Router {
   const router = Router();
 
   router.get('/api/search', guard('documents:search'), (request, response) => {
@@ -58,15 +64,34 @@ export function searchRouter(search: IntelligenceClient['search'], guard: Guard)
 
     void (async () => {
       try {
+        const actor = principal(response);
         const result: unknown = await search({
           ...body,
-          filters: { ...body.filters, org_id: principal(response).orgSlug },
+          filters: { ...body.filters, org_id: actor.orgSlug },
         });
         if (!validateResponse(result)) {
           response.status(502).json({ error: 'Invalid intelligence search response' });
           return;
         }
-        response.json(body.debug ? result : { results: result.results });
+        const citations = result.results.map(({ chunk, citations }) => [
+          ...citations,
+          {
+            doc_id: chunk.doc_id,
+            page: chunk.page,
+            char_start: chunk.char_start,
+            char_end: chunk.char_end,
+            quote: chunk.text,
+            ...(chunk.clause_number ? { clause_number: chunk.clause_number } : {}),
+          },
+        ]);
+        const changes = (await relations?.confirmedChanges(actor.orgId, citations.flat())) ?? [];
+        const results = result.results.map((item, index) => {
+          const warnings = authorityWarnings(changes, citations[index] ?? []);
+          return warnings.length ? { ...item, stale: true, authority_warnings: warnings } : item;
+        });
+        response
+          .set('Cache-Control', 'no-store')
+          .json(body.debug ? { ...result, results } : { results });
       } catch (error) {
         if (error instanceof IntelligenceError && error.status === 422) {
           response.status(422).json({ error: 'Intelligence rejected the search query or filters' });

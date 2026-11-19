@@ -8,11 +8,15 @@ import type {
   CoreSearchApi,
   CoreTaskApi,
   CoreReviewApi,
+  CoreRelationApi,
   DocumentUploadFields,
   DocumentUploadReceipt,
   SearchParameters,
   TaskTransition,
   ReviewOverride,
+  RelationListStatus,
+  StaleDecision,
+  StoredDocumentRelation,
   UserChange,
 } from '../../../contracts/core-api.v1.js';
 
@@ -21,6 +25,7 @@ type CoreApi = CoreAuthApi &
   CoreSearchApi &
   CoreTaskApi &
   CoreReviewApi &
+  CoreRelationApi &
   CoreAdminApi;
 type Path = keyof CoreApi;
 type Session = {
@@ -225,8 +230,58 @@ export function createClient(baseUrl: string, fetcher: typeof fetch = fetch) {
       return response.blob();
     },
 
-    async tasks(this: void) {
-      return decode<'/api/tasks'>(await authorized('/api/tasks', 'GET', undefined));
+    async tasks(this: void, scope?: 'stale') {
+      return decode<'/api/tasks'>(
+        await authorized(
+          '/api/tasks',
+          'GET',
+          undefined,
+          undefined,
+          scope ? new URLSearchParams({ scope }) : undefined,
+        ),
+      );
+    },
+    async relations(status: RelationListStatus) {
+      return decode<'/api/relations'>(
+        await authorized(
+          '/api/relations',
+          'GET',
+          undefined,
+          undefined,
+          new URLSearchParams({ status }),
+        ),
+      );
+    },
+    async relation(id: string) {
+      return decode<'/api/relations/:id'>(
+        await authorized('/api/relations/:id', 'GET', undefined, id),
+      );
+    },
+    async confirmRelation(id: string) {
+      return decode<'/api/relations/:id/confirm'>(
+        await authorized('/api/relations/:id/confirm', 'POST', undefined, id),
+      );
+    },
+    async dismissRelation(id: string, reason: string) {
+      return decode<'/api/relations/:id/dismiss'>(
+        await authorized('/api/relations/:id/dismiss', 'POST', { reason }, id),
+      );
+    },
+    async changeRelationType(id: string, relation_type: StoredDocumentRelation['relation_type']) {
+      return decode<'/api/relations/:id/type'>(
+        await authorized('/api/relations/:id/type', 'PATCH', { relation_type }, id),
+      );
+    },
+    async decideStaleness(relationId: string, taskId: number, change: StaleDecision) {
+      const response = await authorized(
+        '/api/relations/:id/stale-obligations/:obligation_id',
+        'PATCH',
+        change,
+        relationId,
+        undefined,
+        String(taskId),
+      );
+      if (!response.ok) await fail(response);
     },
     async audit(filters: AuditQuery) {
       const query = new URLSearchParams();

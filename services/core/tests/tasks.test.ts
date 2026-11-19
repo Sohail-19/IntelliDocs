@@ -5,6 +5,7 @@ import { hash } from 'argon2';
 import request from 'supertest';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
+import type { TaskFeed } from '../../../contracts/core-api.v1.js';
 import { up as initial } from '../migrations/1700000000000_initial.js';
 import { up as parents } from '../migrations/1700000000001_document_parents.js';
 import { up as indexing } from '../migrations/1700000000002_index_status.js';
@@ -15,6 +16,8 @@ import { up as assignments } from '../migrations/1700000000006_routing_assignmen
 import { up as workflow } from '../migrations/1700000000007_task_workflow.js';
 import { up as reviewMigration } from '../migrations/1700000000008_obligation_review.js';
 import { up as confidenceMigration } from '../migrations/1700000000009_obligation_confidence.js';
+import { up as documentMetadata } from '../migrations/1700000000010_document_metadata.js';
+import { up as documentRelations } from '../migrations/1700000000011_document_relations.js';
 import { createApp } from '../src/app.js';
 import { inTransaction } from '../src/audit.js';
 import { orgPolicy } from '../src/auth/policy.js';
@@ -58,6 +61,8 @@ describe('obligation task workflow', () => {
       workflow,
       reviewMigration,
       confidenceMigration,
+      documentMetadata,
+      documentRelations,
     ]) {
       await apply(migration);
     }
@@ -167,6 +172,42 @@ describe('obligation task workflow', () => {
     return 'Bearer ' + (result.body as { access_token: string }).access_token;
   }
 
+  it('lets a relation reviewer see stale tasks assigned to other users in the same org', async () => {
+    await database.db.exec(
+      'INSERT INTO document_relations (org_id, id, source_id, target_id, relation_type, scope, ' +
+        'source_citations, target_citations, confidence, detected_by, created_at) VALUES ' +
+        "(42, 'relation-1', 2, 1, 'amends', 'clauses', '[]', '[]', 1, 'fixture', CURRENT_TIMESTAMP);" +
+        "INSERT INTO obligation_staleness (org_id, obligation_id, relation_id) VALUES (42, 1, 'relation-1');",
+    );
+    const owner = await login('owner');
+    const manager = await login('manager');
+    const other = await login('owner', 'other');
+    expect((await client.get('/api/tasks?scope=stale').set('Authorization', owner)).status).toBe(
+      403,
+    );
+    expect((await client.get('/api/tasks?scope=stale').set('Authorization', other)).status).toBe(
+      403,
+    );
+    const stale = await client.get('/api/tasks?scope=stale').set('Authorization', manager);
+    expect(stale.status).toBe(200);
+    expect(stale.body).toMatchObject({
+      tasks: [
+        {
+          id: 1,
+          scope: 'stale',
+          stale: true,
+          stale_relation_ids: ['relation-1'],
+          allowed_transitions: [],
+        },
+      ],
+    });
+    const mine = await client.get('/api/tasks?scope=mine').set('Authorization', owner);
+    expect((mine.body as TaskFeed).tasks.find(({ id }) => id === 1)).toMatchObject({
+      stale: true,
+      scope: 'mine',
+    });
+  });
+
   it('lists personal, department and review queues with source citations and due-date filtering', async () => {
     const owner = await login('owner');
     const manager = await login('manager');
@@ -203,7 +244,10 @@ describe('obligation task workflow', () => {
     ).toMatchObject({ tasks: [{ id: 2 }] });
     expect(
       (await client.get('/api/tasks?scope=review').set('Authorization', manager)).body,
-    ).toMatchObject({ tasks: [{ id: 3 }], available_scopes: ['mine', 'department', 'review'] });
+    ).toMatchObject({
+      tasks: [{ id: 3 }],
+      available_scopes: ['mine', 'department', 'review', 'stale'],
+    });
     expect((await client.get('/api/tasks?scope=review').set('Authorization', owner)).body).toEqual({
       tasks: [],
       available_scopes: ['mine', 'department'],

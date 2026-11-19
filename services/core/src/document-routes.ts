@@ -42,22 +42,26 @@ export function documentRouter(
       })
       .catch(next);
   });
-  router.get('/api/documents/:id', access, (request, response, next) => {
-    const id = request.params.id;
-    if (typeof id !== 'string' || id.length > 255 || id.includes('\0')) {
-      response.status(400).json({ error: 'Invalid document ID' });
-      return;
-    }
-    void reader
-      .get(principal(response).orgId, id)
-      .then((document) => {
-        if (!document) {
-          response.status(404).json({ error: 'Document not found' });
-          return;
-        }
-        response.set('Cache-Control', 'no-store').json({ document });
-      })
-      .catch(next);
-  });
+  router.get(
+    '/api/documents/:id',
+    guard('documents:upload', 'documents:search', 'documents:answer'),
+    (request, response, next) => {
+      const id = request.params.id;
+      if (typeof id !== 'string' || id.length > 255 || id.includes('\0')) {
+        response.status(400).json({ error: 'Invalid document ID' });
+        return;
+      }
+      void reader
+        .get(principal(response).orgId, id)
+        .then((document) => {
+          if (!document) {
+            response.status(404).json({ error: 'Document not found' });
+            return;
+          }
+          response.set('Cache-Control', 'no-store').json({ document });
+        })
+        .catch(next);
+    },
+  );
   return router;
 }

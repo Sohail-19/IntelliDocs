@@ -8,6 +8,7 @@ import { AuditPage } from './oversight/audit-page.js';
 import { OrganisationPage } from './oversight/organisation-page.js';
 import { UsersPage } from './oversight/users-page.js';
 import { SearchPage } from './search/page.js';
+import { RelationsPage } from './relations/relations-page.js';
 import { ErrorState, LoadingState } from './states.js';
 import { ReviewPage } from './work/review-page.js';
 import { TasksPage } from './work/tasks-page.js';
@@ -87,6 +88,20 @@ function RequirePermission({ permission }: { permission: Permission }) {
   );
 }
 
+function RequireDocumentRead() {
+  const { profile } = useAuth();
+  return profile.data?.permissions.some((permission) =>
+    ['documents:upload', 'documents:search', 'documents:answer'].includes(permission),
+  ) ? (
+    <Outlet context={profile.data} />
+  ) : (
+    <ErrorState
+      title="Access denied"
+      description="Your account does not have access to documents."
+    />
+  );
+}
+
 export function App() {
   return (
     <Routes>
@@ -96,11 +111,17 @@ export function App() {
           <Route index element={<Home />} />
           <Route element={<RequireDocumentAccess />}>
             <Route path="/documents" element={<DocumentsPage />} />
+          </Route>
+          <Route element={<RequireDocumentRead />}>
             <Route path="/documents/:id" element={<DocumentDetail />} />
           </Route>
           <Route path="/search" element={<SearchPage />} />
           <Route path="/tasks" element={<TasksPage />} />
           <Route path="/review" element={<ReviewPage />} />
+          <Route element={<RequirePermission permission="relations:review" />}>
+            <Route path="/relations" element={<RelationsPage />} />
+            <Route path="/relations/:id" element={<RelationsPage />} />
+          </Route>
           <Route element={<RequirePermission permission="audit:read" />}>
             <Route path="/audit" element={<AuditPage />} />
           </Route>

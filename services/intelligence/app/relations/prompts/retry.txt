@@ -1,0 +1,5 @@
+The previous response did not match the output schema. Return only one valid
+JSON object with the required keys and exact quotes, or the specified empty
+result when the passages provide insufficient evidence. Attempt $attempt.
+
+$original_prompt

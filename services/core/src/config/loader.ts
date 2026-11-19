@@ -34,6 +34,12 @@ export interface OrgConfig {
       absolute_deadline_wrappers?: string[];
     }
   >;
+  relation_detection?: {
+    reference_cues?: Record<string, string[]>;
+    change_cues?: Record<string, Partial<Record<'supersedes' | 'amends' | 'withdraws', string[]>>>;
+    nonoperative_cues?: Record<string, string[]>;
+    related_document_types?: Record<string, string[]>;
+  };
   department_aliases?: Record<string, string[]>;
   roles?: Record<string, { department?: string; aliases?: string[] }>;
   routing_policy?: RoutingPolicy;

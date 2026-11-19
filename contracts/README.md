@@ -125,3 +125,17 @@ optional. Structured rules require `routing_policy`, which supplies
 the referenced departments, document types, and roles exist, and exactly
 one unconditional default runs last. A legacy config without
 `routing_policy` leaves automatic routing disabled.
+
+Phase 8 defines `POST /v1/detect-relations`. The request contains `doc_id` and
+the response is a RelationResult with the submitted document ID, a list of
+relations, and warnings. A DocumentRelation points from the newer document
+(`source_doc_id`) to the older one (`target_doc_id`). The scope identifies
+either the entire document or specific clauses. Both evidence arrays use
+Citation v1. `detected_by` identifies the detector, and `created_at` uses RFC
+3339 with an explicit time zone offset.
+
+New detection responses include `needs_review` and `confidence_breakdown`
+on each proposal. The four breakdown fields contribute to `confidence`.
+A proposal can carry an empty citation list on a side where verification
+failed. Confirmed relations require citations on both sides and cannot
+carry `needs_review: true`.

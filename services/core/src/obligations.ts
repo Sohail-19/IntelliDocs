@@ -1,4 +1,5 @@
 import type { Pool, PoolClient } from 'pg';
+import type { Citation } from '../../../contracts/core-api.v1.js';
 
 import { inTransaction, writeAudit } from './audit.js';
 import type { AuditContext } from './audit.js';
@@ -9,6 +10,15 @@ import type {
   ObligationOwner,
 } from './intelligence/client.js';
 import { effectiveDeadline, effectiveOwner, normalizedDeadline } from './obligation-values.js';
+import {
+  effectiveAction,
+  effectiveCitations,
+  flagStaleness,
+  hasPendingStaleness,
+  pendingStale,
+  pendingStaleIds,
+  readConfirmedChanges,
+} from './relations/staleness.js';
 import { changeAssignment } from './routing/assignments.js';
 import type { Assignment } from './routing/assignments.js';
 import type { PostgresRoutingService } from './routing/service.js';
@@ -18,6 +28,8 @@ type ObligationStatus = (typeof extractionStatuses)[number];
 export type ExtractedObligation = Extract<Obligation, { status: ObligationStatus }>;
 export type ReviewDecision = 'approved' | 'rejected';
 export type StoredObligation = ExtractedObligation & {
+  stale?: boolean;
+  stale_relation_ids?: string[];
   assigned_user_id?: number | null;
   assignment?: Assignment | null;
   extracted_owner?: ObligationOwner;
@@ -47,7 +59,7 @@ export interface ObligationFilters {
 
 export type ObligationMutation = { status: ObligationStatus } | { assignedUserId: number | null };
 type MutationOutcome =
-  'updated' | 'missing' | 'invalid_assignee' | 'missing_citation' | 'use_review';
+  'updated' | 'missing' | 'invalid_assignee' | 'missing_citation' | 'use_review' | 'stale';
 type ObligationSnapshot = { id: string | null; status: string; assigned_user_id: number | null };
 type ExtractionSnapshot = {
   extraction_status: DocumentExtractionState['extraction_status'];
@@ -93,6 +105,7 @@ export class PostgresObligationRepository implements ObligationRepository {
         result.doc_id,
         audit.orgId,
       );
+      const changes = await readConfirmedChanges(connection, audit.orgId, [result.doc_id]);
       for (const item of stored) {
         if (item.id !== null && remaining.has(item.id)) continue;
         await changeAssignment(connection, item.row_id, null);
@@ -109,6 +122,9 @@ export class PostgresObligationRepository implements ObligationRepository {
           owner_override: ObligationOwner | null;
           deadline_override: ObligationDeadline | null;
           review_decision: ReviewDecision | null;
+          task_status: string;
+          stale_action_override: string | null;
+          stale_citations_override: Citation[] | null;
         }>(
           'INSERT INTO obligations (document_id, external_id, action, owner, owner_details, deadline, condition, obligation_type, citations, confidence, status, extracted_status, extractor_version, confidence_breakdown) ' +
             'VALUES ($1, $2, $3, $4, $5::jsonb, $6::jsonb, $7, $8, $9::jsonb, $10, $11::text, $11::text, $12, $13::jsonb) ' +
@@ -118,7 +134,8 @@ export class PostgresObligationRepository implements ObligationRepository {
             'confidence_breakdown = EXCLUDED.confidence_breakdown, ' +
             'status = EXCLUDED.status, extracted_status = EXCLUDED.extracted_status, extractor_version = EXCLUDED.extractor_version, ' +
             'retired_at = NULL, updated_at = CURRENT_TIMESTAMP ' +
-            'RETURNING id, assigned_user_id, owner_override, deadline_override, review_decision',
+            'RETURNING id, assigned_user_id, owner_override, deadline_override, review_decision, ' +
+            'task_status, stale_action_override, stale_citations_override',
           [
             id,
             item.id,
@@ -140,16 +157,32 @@ export class PostgresObligationRepository implements ObligationRepository {
         const row = rows[0];
         if (!row) throw new Error('Obligation upsert returned no row');
         let assigned = row.assigned_user_id;
+        const citations = row.stale_citations_override ?? item.citations;
         const decision =
-          row.review_decision === 'approved' && !item.citations.length ? null : row.review_decision;
+          row.review_decision === 'approved' && !citations.length ? null : row.review_decision;
         let status = item.status;
         if (decision === 'approved') status = 'verified';
         else if (decision === 'rejected') status = 'rejected';
+        const action = row.stale_action_override ?? item.action;
+        await flagStaleness(
+          connection,
+          {
+            id: row.id,
+            doc_id: result.doc_id,
+            obligation_id: item.id,
+            task_status: row.task_status,
+            status,
+            action,
+            citations,
+          },
+          changes,
+          audit,
+        );
         if (this.routing && decision !== 'rejected') {
           const owner = row.owner_override ?? item.owner;
           const deadline = row.deadline_override ?? item.deadline;
           const held =
-            !decision && (!item.citations.length || row.owner_override || row.deadline_override);
+            !decision && (!citations.length || row.owner_override || row.deadline_override);
           const assignment = await this.routing.assign(
             connection,
             {
@@ -161,7 +194,7 @@ export class PostgresObligationRepository implements ObligationRepository {
               obligationType: item.obligation_type,
               ownerDepartment: owner.resolved_department,
               ownerResolved: owner.resolved,
-              action: item.action,
+              action,
               condition: item.condition ?? null,
               deadline: deadline.resolved ? deadline.normalized_date : null,
               confidence: item.confidence,
@@ -241,6 +274,7 @@ export class PostgresObligationRepository implements ObligationRepository {
       );
       const target = rows[0];
       if (!target) return 'missing';
+      if (await hasPendingStaleness(client, target.id)) return 'stale';
       const routingEnabled = this.routing?.enabled(target.org_slug);
       if (
         ('status' in change &&
@@ -387,12 +421,20 @@ export async function listStoredObligations(
   }
   const { rows } = await client.query<{ obligation: StoredObligation }>(
     "SELECT jsonb_strip_nulls(jsonb_build_object('condition', o.condition, 'confidence_breakdown', o.confidence_breakdown)) || jsonb_build_object(" +
-      "'id', o.external_id, 'doc_id', d.external_id, 'action', o.action, 'owner', " +
+      "'id', o.external_id, 'doc_id', d.external_id, 'action', " +
+      effectiveAction +
+      ", 'owner', " +
       effectiveOwner +
       ', ' +
       "'deadline', " +
       effectiveDeadline +
-      ", 'obligation_type', o.obligation_type, 'citations', o.citations, " +
+      ", 'obligation_type', o.obligation_type, 'citations', " +
+      effectiveCitations +
+      ", 'stale', " +
+      pendingStale +
+      ", 'stale_relation_ids', " +
+      pendingStaleIds +
+      ', ' +
       "'confidence', o.confidence, 'status', o.status, 'extractor_version', o.extractor_version, " +
       "'extracted_owner', o.owner_details, 'extracted_deadline', o.deadline, 'extracted_status', COALESCE(o.extracted_status, o.status), " +
       "'owner_override', o.owner_override, 'deadline_override', o.deadline_override, " +

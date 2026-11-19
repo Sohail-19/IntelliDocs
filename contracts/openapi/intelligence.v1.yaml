@@ -72,6 +72,15 @@
           "200": { "description": "Obligations with resolution details, citations, warnings and extraction statistics", "content": { "application/json": { "schema": { "$ref": "../schemas/extraction-result.v1.schema.json" } } } }
         }
       }
+    },
+    "/v1/detect-relations": {
+      "post": {
+        "description": "Propose relations from the indexed document using evidence from both documents and flag proposals that need review.",
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "../schemas/detect-relations-request.v1.schema.json" } } } },
+        "responses": {
+          "200": { "description": "Relation proposals with verified citations, confidence contributions, and warnings", "content": { "application/json": { "schema": { "$ref": "../schemas/relation-result.v1.schema.json" } } } }
+        }
+      }
     }
   }
 }

@@ -7,7 +7,7 @@ const org = 'example';
 
 function fixturePdf(text) {
   const literal = text.replace(/[()\\]/g, '\\$&');
-  const content = 'BT /F1 18 Tf 40 650 Td (' + literal + ') Tj ET';
+  const content = 'BT /F1 16 Tf 40 650 Td (' + literal + ') Tj ET';
   const objects = [
     '<< /Type /Catalog /Pages 2 0 R >>',
     '<< /Type /Pages /Kids [3 0 R] /Count 1 >>',
@@ -28,7 +28,21 @@ function fixturePdf(text) {
   return Buffer.from(pdf);
 }
 
-test('uploads, cites, completes an obligation, and traces it in the audit trail', async ({
+async function upload(page, fixture, text = fixture.quote) {
+  await page.getByLabel('Browse files').setInputFiles({
+    name: fixture.filename,
+    mimeType: 'application/pdf',
+    buffer: fixturePdf(text),
+  });
+  await page.getByLabel('Department').selectOption('finance');
+  await page.getByLabel('Document type').selectOption('invoice');
+  if (fixture.date) await page.getByLabel('Document date').fill(fixture.date);
+  await page.getByRole('button', { name: 'Upload file', exact: true }).click();
+  const row = page.getByRole('row').filter({ hasText: fixture.filename });
+  await expect(row.getByText('Ready', { exact: true })).toBeVisible({ timeout: 40_000 });
+}
+
+test('completes an obligation and flags a task after confirming a circular amendment', async ({
   page,
   request,
 }) => {
@@ -51,19 +65,10 @@ test('uploads, cites, completes an obligation, and traces it in the audit trail'
   await page.goto('/login');
   await page.getByLabel('Organization ID').fill(org);
   await page.getByLabel('Email address').fill(email);
-    await page.getByLabel('Password', { exact: true }).fill(DEMO_PASSWORD);
+  await page.getByLabel('Password', { exact: true }).fill(DEMO_PASSWORD);
   await page.getByRole('button', { name: 'Sign in' }).click();
   await page.getByRole('link', { name: 'Documents' }).click();
-  await page.getByLabel('Browse files').setInputFiles({
-    name: fixture.filename,
-    mimeType: 'application/pdf',
-    buffer: fixturePdf(fixture.quote),
-  });
-  await page.getByLabel('Department').selectOption('finance');
-  await page.getByLabel('Document type').selectOption('invoice');
-  await page.getByRole('button', { name: 'Upload file', exact: true }).click();
-  const document = page.getByRole('row').filter({ hasText: fixture.filename });
-  await expect(document.getByText('Ready', { exact: true })).toBeVisible({ timeout: 40_000 });
+  await upload(page, fixture);
 
   await page.getByRole('link', { name: 'Search', exact: true }).click();
   await page.getByRole('searchbox', { name: 'Search query' }).fill('reconciliation ledger');
@@ -105,4 +110,35 @@ test('uploads, cites, completes an obligation, and traces it in the audit trail'
   const diff = changes.first().getByRole('table', { name: 'Changed fields' });
   await expect(diff.getByText('"in_progress"', { exact: true })).toBeVisible();
   await expect(diff.getByText('"done"', { exact: true })).toBeVisible();
+
+  await page.getByRole('link', { name: 'Documents', exact: true }).click();
+  await upload(page, fixture.original, '1. ' + fixture.original.quote);
+  await upload(page, fixture.amendment, '1. ' + fixture.amendment.quote);
+  await page.getByRole('link', { name: 'Relations', exact: true }).click();
+  const relation = page.getByRole('article', { name: 'Amends' });
+  const newer = relation.getByRole('region', { name: 'Newer document' });
+  const older = relation.getByRole('region', { name: 'Older document' });
+  await expect(newer.getByText(fixture.amendment.quote)).toBeVisible();
+  await expect(older.getByText(fixture.original.quote)).toBeVisible();
+  await older.getByRole('button', { name: /Page 1/ }).click();
+  await expect(citation.locator('canvas')).toBeVisible();
+  await citation.getByRole('button', { name: 'Close citation' }).click();
+  await relation.getByRole('button', { name: 'Confirm relation' }).click();
+  await expect(page.getByText('Relation confirmed.', { exact: true })).toBeVisible();
+  await expect(relation.getByText('confirmed', { exact: true })).toBeVisible();
+
+  await page.getByRole('link', { name: 'Documents', exact: true }).click();
+  await page.getByRole('link', { name: fixture.original.filename }).click();
+  await expect(page.getByText('Amended', { exact: true })).toBeVisible();
+  await page.getByRole('link', { name: 'View newer document' }).click();
+  await expect(page.getByRole('heading', { name: fixture.amendment.filename })).toBeVisible();
+
+  await page.getByRole('link', { name: 'Task feed' }).click();
+  await page.getByRole('tab', { name: 'Stale tasks' }).click();
+  const stale = page.getByRole('row').filter({ hasText: fixture.original.action });
+  await expect(stale.getByText('Stale · manager decision required')).toBeVisible();
+  await expect(stale.getByRole('button', { name: 'Acknowledge' })).toHaveCount(0);
+  await expect(stale.getByRole('button', { name: 'Keep task' })).toBeVisible();
+  await expect(stale.getByRole('button', { name: 'Update task' })).toBeVisible();
+  await expect(stale.getByRole('button', { name: 'Close task' })).toBeVisible();
 });

@@ -113,6 +113,31 @@
       ]
     }
   },
+  "relation_detection": {
+    "reference_cues": {
+      "en": ["dated", "vide", "in supersession of", "in modification of", "circular no.", "order no."],
+      "hi": ["दिनांक", "दिनांकित", "के संदर्भ में", "के अधिक्रमण में", "के संशोधन में", "परिपत्र संख्या", "आदेश संख्या"]
+    },
+    "change_cues": {
+      "en": {
+        "supersedes": ["supersedes", "in supersession of", "is hereby superseded"],
+        "amends": ["amends", "is amended", "in modification of", "is replaced with"],
+        "withdraws": ["withdraws", "is hereby withdrawn", "stands withdrawn"]
+      },
+      "hi": {
+        "supersedes": ["का अधिक्रमण करता है", "के अधिक्रमण में", "अधिक्रमित किया जाता है"],
+        "amends": ["के संशोधन में", "संशोधित किया जाता है", "संशोधित करता है"],
+        "withdraws": ["वापस लिया जाता है", "वापस लेता है", "निरस्त किया जाता है"]
+      }
+    },
+    "nonoperative_cues": {
+      "en": ["does not supersede", "nothing in this", "would supersede", "proposed amendment", "subject to approval"],
+      "hi": ["नहीं", "प्रस्तावित", "अनुमोदन के अधीन"]
+    },
+    "related_document_types": {
+      "agreement": ["invoice"]
+    }
+  },
   "department_aliases": {
     "legal": [
       "Legal Department",
@@ -155,6 +180,7 @@
         "obligations:status",
         "obligations:assign",
         "obligations:review",
+        "relations:review",
         "tasks:read",
         "tasks:transition",
         "users:roles"
@@ -170,6 +196,7 @@
         "obligations:status",
         "obligations:assign",
         "obligations:review",
+        "relations:review",
         "tasks:read",
         "tasks:transition"
       ],

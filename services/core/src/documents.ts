@@ -4,6 +4,7 @@ import type { DocumentRecord } from '../../../contracts/core-api.v1.js';
 import { inTransaction, writeAudit } from './audit.js';
 import type { AuditContext } from './audit.js';
 import type { IngestResponse, ParseResult } from './intelligence/client.js';
+import { documentAuthorityWarnings, readConfirmedChanges } from './relations/staleness.js';
 
 type IndexState = {
   status: 'parsed' | 'indexed' | 'failed';
@@ -87,13 +88,25 @@ export class PostgresDocumentRepository implements DocumentRepository, DocumentR
   }
 
   async get(orgId: number, id: string): Promise<DocumentRecord | undefined> {
-    return (await this.read(orgId, id))[0];
+    const [document] = await this.read(orgId, id);
+    if (
+      !document ||
+      document.authority_status === 'in_force' ||
+      document.authority_status === 'under_review'
+    )
+      return document;
+    return {
+      ...document,
+      authority_warnings: documentAuthorityWarnings(
+        await readConfirmedChanges(this.pool, orgId, [id]),
+      ),
+    };
   }
 
   private async read(orgId: number, id?: string): Promise<DocumentRecord[]> {
     const { rows } = await this.pool.query<DocumentRow>(
       'SELECT d.external_id AS id, d.filename, d.department, d.doc_type, d.doc_date::text, d.mime_type, d.languages, ' +
-        'd.page_count, d.status, d.extraction_status, d.index_error, d.extraction_error, d.created_at, d.indexed_at, ' +
+        'd.page_count, d.status, d.authority_status, d.extraction_status, d.index_error, d.extraction_error, d.created_at, d.indexed_at, ' +
         'p.external_id AS parent_document_id FROM documents d ' +
         'LEFT JOIN documents p ON p.id = d.parent_document_id AND p.org_id = d.org_id ' +
         'WHERE d.org_id = $1 ' +

@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { Link, useOutletContext, useParams } from 'react-router-dom';
 import type { AuthProfile, DocumentRecord } from '../../../../contracts/core-api.v1.js';
 import { useAuth } from '../auth.js';
+import { AuthorityBadge, AuthorityWarnings } from '../relations/authority.js';
 import { EmptyState, ErrorState, LoadingState } from '../states.js';
 import {
   StatusBadge,
@@ -118,6 +119,7 @@ export function DocumentsPage() {
                 <tr>
                   <th scope="col">Document</th>
                   <th scope="col">Status</th>
+                  <th scope="col">Authority</th>
                   <th scope="col">Language</th>
                   <th scope="col">Document date</th>
                 </tr>
@@ -171,6 +173,13 @@ export function DocumentsPage() {
                           <p className="document-row-error" role="alert">
                             {errorMessage(retry.error, 'Retry could not be completed.')}
                           </p>
+                        )}
+                      </td>
+                      <td>
+                        {document.authority_status ? (
+                          <AuthorityBadge status={document.authority_status} />
+                        ) : (
+                          '—'
                         )}
                       </td>
                       <td>{document.languages.join(', ') || '—'}</td>
@@ -256,9 +265,11 @@ export function DocumentDetail() {
 
   return (
     <div className="documents-page">
-      <Link to="/documents" className="document-back">
-        Back to documents
-      </Link>
+      {profile.permissions.includes('documents:upload') && (
+        <Link to="/documents" className="document-back">
+          Back to documents
+        </Link>
+      )}
       {documentQuery.isPending && <LoadingState label="Loading document…" />}
       {documentQuery.isError && (
         <ErrorState
@@ -283,17 +294,25 @@ export function DocumentDetail() {
               <p className="page-description">
                 Uploaded <DateValue value={document.created_at} />
               </p>
+              {document.authority_status && <AuthorityBadge status={document.authority_status} />}
             </div>
             <StatusBadge document={document} retrying={retry.isPending} />
           </div>
+          <AuthorityWarnings warnings={document.authority_warnings} document />
           {failed && !retry.isPending && (
             <ErrorState
               title="Document processing failed"
               description={documentError(document)}
               action={
-                <button className="secondary-button" type="button" onClick={() => retry.mutate(id)}>
-                  Retry processing
-                </button>
+                profile.permissions.includes('documents:upload') ? (
+                  <button
+                    className="secondary-button"
+                    type="button"
+                    onClick={() => retry.mutate(id)}
+                  >
+                    Retry processing
+                  </button>
+                ) : undefined
               }
             />
           )}

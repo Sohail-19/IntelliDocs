@@ -2,6 +2,7 @@ import type { Pool } from 'pg';
 import type { ReviewOptions, ReviewOverride } from '../../../../contracts/core-api.v1.js';
 
 import { inTransaction, writeAudit } from '../audit.js';
+import { effectiveCitations, hasPendingStaleness } from '../relations/staleness.js';
 import type { AuditContext } from '../audit.js';
 import type { OrgConfig } from '../config/loader.js';
 import type { ObligationDeadline, ObligationOwner } from '../intelligence/client.js';
@@ -69,13 +70,17 @@ export class ObligationReviewRepository {
     return inTransaction(this.pool, async (client) => {
       const { rows } = await client.query<ReviewRow>(
         'SELECT o.id, org.slug AS org_slug, o.status, o.owner_details AS extracted_owner, o.deadline AS extracted_deadline, ' +
-          'o.owner_override, o.deadline_override, o.review_decision, o.review_reason, jsonb_array_length(o.citations) > 0 AS has_citation ' +
+          'o.owner_override, o.deadline_override, o.review_decision, o.review_reason, jsonb_array_length(' +
+          effectiveCitations +
+          ') > 0 AS has_citation ' +
           'FROM obligations o JOIN documents d ON d.id = o.document_id JOIN organizations org ON org.id = d.org_id ' +
           'WHERE d.org_id = $1 AND d.external_id = $2 AND o.external_id = $3 AND o.retired_at IS NULL FOR UPDATE OF o',
         [audit.orgId, docId, obligationId],
       );
       const pending = rows[0];
       if (!pending) throw new ReviewError(404, 'Obligation not found');
+      if (await hasPendingStaleness(client, pending.id))
+        throw new ReviewError(409, 'Resolve the pending stale obligation review');
       if (pending.status !== 'needs_review' || pending.review_decision) {
         throw new ReviewError(409, 'The obligation is not pending review');
       }

@@ -16,6 +16,7 @@ import { up as tasks } from '../migrations/1700000000007_task_workflow.js';
 import { up as review } from '../migrations/1700000000008_obligation_review.js';
 import { up as confidenceMigration } from '../migrations/1700000000009_obligation_confidence.js';
 import { up as documentMetadata } from '../migrations/1700000000010_document_metadata.js';
+import { up as documentRelations } from '../migrations/1700000000011_document_relations.js';
 import { createApp } from '../src/app.js';
 import { PostgresAuditReader } from '../src/audit.js';
 import type { AuditEntry } from '../src/audit.js';
@@ -156,6 +157,7 @@ async function setup(database: ReturnType<typeof createTestDatabase>, limitedSou
     review,
     confidenceMigration,
     documentMetadata,
+    documentRelations,
   ]) {
     await apply(migration);
   }

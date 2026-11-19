@@ -9,6 +9,7 @@ import { auditContext } from './audit.js';
 import type { AuditContext } from './audit.js';
 import { principal } from './auth/routes.js';
 import type { Guard } from './auth/routes.js';
+import type { DetectRelations } from './relations/detection.js';
 import type { ExtractionResult, IntelligenceClient, Obligation } from './intelligence/client.js';
 import { extractionFailure, extractionStatuses } from './obligations.js';
 import type {
@@ -130,6 +131,7 @@ export function obligationRouter(
   repository: ObligationRepository,
   run: ReturnType<typeof runExtraction>,
   guard: Guard,
+  detect?: DetectRelations,
 ): Router {
   const router = Router();
   router.get('/api/obligations', guard('obligations:read'), (request, response, next) => {
@@ -179,7 +181,16 @@ export function obligationRouter(
         return;
       }
       void (async () => {
-        response.json(await run(id, auditContext(request, response, principal(response))));
+        const audit = auditContext(request, response, principal(response));
+        const result = await run(id, audit);
+        try {
+          await detect?.(id, audit);
+          response.json(result);
+        } catch {
+          response
+            .status(502)
+            .json({ extraction_result: result, error: 'Relation detection failed' });
+        }
       })().catch((error: unknown) => {
         if (error instanceof ExtractionRouteError)
           response.status(error.status).json({ error: error.message });
@@ -240,6 +251,9 @@ export function obligationRouter(
               break;
             case 'use_review':
               response.status(409).json({ error: 'Use the obligation review workflow' });
+              break;
+            case 'stale':
+              response.status(409).json({ error: 'Resolve the pending stale obligation review' });
               break;
           }
         })

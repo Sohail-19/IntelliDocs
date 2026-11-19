@@ -14,6 +14,7 @@ import type {
   IndexResult,
   ParseResult,
 } from './intelligence/client.js';
+import type { DetectRelations } from './relations/detection.js';
 
 export interface UploadDependencies {
   intelligence: Pick<IntelligenceClient, 'ingest' | 'index'>;
@@ -32,6 +33,7 @@ export function uploadRouter(
   guard: Guard,
   extract?: (docId: string, audit: AuditContext) => Promise<ExtractionResult>,
   ownsDocument?: (docId: string, orgId: number) => Promise<boolean>,
+  detect?: DetectRelations,
 ): Router {
   const router = Router();
   const maxBytes = uploadLimit(dependencies.maxBytes);
@@ -70,10 +72,24 @@ export function uploadRouter(
           res.status(502).json({ error: 'Indexing failed' });
           return;
         }
+        let extraction: ExtractionResult | undefined;
         try {
-          res.json({ index_result: indexed, extraction_result: await extract?.(docId, audit) });
+          extraction = await extract?.(docId, audit);
         } catch {
           res.status(502).json({ index_result: indexed, error: 'Obligation extraction failed' });
+          return;
+        }
+        try {
+          if (extraction) await detect?.(docId, audit);
+          res.json({ index_result: indexed, extraction_result: extraction });
+        } catch {
+          res
+            .status(502)
+            .json({
+              index_result: indexed,
+              extraction_result: extraction,
+              error: 'Relation detection failed',
+            });
         }
       })().catch(next);
     });
@@ -136,6 +152,7 @@ export function uploadRouter(
         const extractionResults: ExtractionResult[] = [];
         const extractionFailures: string[] = [];
         const indexFailures: string[] = [];
+        const relationFailures: string[] = [];
         const documents: ParseResult[] = [result.parse_result];
         for (const parsed of documents) {
           documents.push(...(parsed.attachments ?? []));
@@ -150,26 +167,44 @@ export function uploadRouter(
               extractionResults.push(await extract(parsed.document.id, audit));
             } catch {
               extractionFailures.push(parsed.document.id);
+              continue;
+            }
+            try {
+              await detect?.(parsed.document.id, audit);
+            } catch {
+              relationFailures.push(parsed.document.id);
             }
           }
         }
-        res.status(indexFailures.length || extractionFailures.length ? 502 : 202).json({
-          ...result,
-          index_results: indexResults,
-          ...(extract ? { extraction_results: extractionResults } : {}),
-          ...(extractionFailures.length
-            ? {
-                extraction_error: 'Some indexed documents failed obligation extraction.',
-                extraction_failed_document_ids: extractionFailures,
-              }
-            : {}),
-          ...(indexFailures.length
-            ? {
-                index_error: 'Some documents failed indexing; parsed documents remain stored.',
-                index_failed_document_ids: indexFailures,
-              }
-            : {}),
-        });
+        res
+          .status(
+            indexFailures.length || extractionFailures.length || relationFailures.length
+              ? 502
+              : 202,
+          )
+          .json({
+            ...result,
+            index_results: indexResults,
+            ...(extract ? { extraction_results: extractionResults } : {}),
+            ...(extractionFailures.length
+              ? {
+                  extraction_error: 'Some indexed documents failed obligation extraction.',
+                  extraction_failed_document_ids: extractionFailures,
+                }
+              : {}),
+            ...(indexFailures.length
+              ? {
+                  index_error: 'Some documents failed indexing; parsed documents remain stored.',
+                  index_failed_document_ids: indexFailures,
+                }
+              : {}),
+            ...(relationFailures.length
+              ? {
+                  relation_error: 'Some documents failed relation detection.',
+                  relation_failed_document_ids: relationFailures,
+                }
+              : {}),
+          });
       })().catch((failure: unknown) => {
         if (failure instanceof IntelligenceError) {
           const message =

@@ -58,6 +58,41 @@
         }
       }
     },
+    "relation_detection": {
+      "type": "object",
+      "description": "Candidate finding vocabulary and similarity type matches for this organization.",
+      "additionalProperties": false,
+      "properties": {
+        "reference_cues": {
+          "type": "object",
+          "description": "Literal reference cues keyed by a language from languages.",
+          "additionalProperties": { "type": "array", "items": { "type": "string", "pattern": "\\S" } }
+        },
+        "change_cues": {
+          "type": "object",
+          "description": "Literal explicit-change phrases keyed by language and relation type.",
+          "additionalProperties": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "supersedes": { "type": "array", "items": { "type": "string", "pattern": "\\S" } },
+              "amends": { "type": "array", "items": { "type": "string", "pattern": "\\S" } },
+              "withdraws": { "type": "array", "items": { "type": "string", "pattern": "\\S" } }
+            }
+          }
+        },
+        "nonoperative_cues": {
+          "type": "object",
+          "description": "Phrases that indicate a negated, proposed, or conditional change, keyed by language.",
+          "additionalProperties": { "type": "array", "items": { "type": "string", "pattern": "\\S" } }
+        },
+        "related_document_types": {
+          "type": "object",
+          "description": "Additional target types eligible for similarity, keyed by source document type.",
+          "additionalProperties": { "type": "array", "items": { "type": "string", "minLength": 1 } }
+        }
+      }
+    },
     "routing_policy": {
       "type": "object",
       "additionalProperties": false,

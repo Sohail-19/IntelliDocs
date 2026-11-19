@@ -14,6 +14,7 @@ export type Permission =
   | "obligations:status"
   | "obligations:assign"
   | "obligations:review"
+  | "relations:review"
   | "tasks:read"
   | "tasks:transition";
 
@@ -86,6 +87,8 @@ export interface DocumentRecord {
   extraction_status: "pending" | "completed" | "failed";
   index_error: string | null;
   extraction_error: string | null;
+  authority_status?: DocumentAuthorityStatus;
+  authority_warnings?: AuthorityWarning[];
   created_at: string;
   indexed_at: string | null;
 }
@@ -102,6 +105,8 @@ export interface DocumentObligations {
     };
     deadline: { raw_text: string; normalized_date: string | null };
     citations: Citation[];
+    stale?: boolean;
+    stale_relation_ids?: string[];
   }[];
   extraction_status: DocumentRecord["extraction_status"];
   extraction_error: string | null;
@@ -111,6 +116,7 @@ export interface DocumentUploadReceipt {
   document_id: string;
   index_failed_document_ids?: string[];
   extraction_failed_document_ids?: string[];
+  relation_failed_document_ids?: string[];
 }
 
 export interface CoreDocumentApi {
@@ -147,8 +153,27 @@ export interface CoreDocumentApi {
 }
 
 export type Citation = components["schemas"]["citation.v1.schema"];
-export type SearchResult = components["schemas"]["search-result.v1.schema"];
-export type Answer = components["schemas"]["answer.v1.schema"];
+export type DocumentAuthorityStatus =
+  | "in_force"
+  | "superseded"
+  | "partially_amended"
+  | "withdrawn"
+  | "under_review";
+export interface AuthorityWarning {
+  doc_id: string;
+  newer_doc_id: string;
+  relation_id: string;
+  status: "superseded" | "partially_amended" | "withdrawn";
+  message: string;
+}
+export type SearchResult = components["schemas"]["search-result.v1.schema"] & {
+  stale?: boolean;
+  authority_warnings?: AuthorityWarning[];
+};
+export type Answer = components["schemas"]["answer.v1.schema"] & {
+  stale_sources?: boolean;
+  authority_warnings?: AuthorityWarning[];
+};
 
 export interface SearchOptions {
   departments: string[];
@@ -181,7 +206,7 @@ export interface CoreSearchApi {
   "/api/documents/:id/source": { method: "GET"; body: undefined; result: Blob };
 }
 
-export type TaskScope = "mine" | "department" | "review";
+export type TaskScope = "mine" | "department" | "review" | "stale";
 export type TaskStatus =
   "open" | "acknowledged" | "in_progress" | "done" | "rejected" | "overdue";
 export type TaskAction = Exclude<TaskStatus, "open" | "overdue">;
@@ -205,6 +230,69 @@ export interface TaskRecord {
   queue_type: "role" | "department" | null;
   queue_name: string | null;
   allowed_transitions: TaskAction[];
+  stale?: boolean;
+  stale_relation_ids?: string[];
+}
+
+export type StoredDocumentRelation =
+  components["schemas"]["document-relation.v1.schema"] & {
+    reviewed_by: number | null;
+    reviewed_at: string | null;
+    review_reason: string | null;
+    source_filename?: string;
+    target_filename?: string;
+  };
+
+export type RelationListStatus = "proposed" | "confirmed";
+
+export type StaleDecision =
+  | { decision: "keep" | "close"; reason: string }
+  | { decision: "update"; reason: string; action: string };
+
+export interface CoreRelationApi {
+  "/api/relations": {
+    method: "GET";
+    body: undefined;
+    result: { relations: StoredDocumentRelation[] };
+  };
+  "/api/relations/:id": {
+    method: "GET";
+    body: undefined;
+    result: { relation: StoredDocumentRelation };
+  };
+  "/api/relations/:id/confirm": {
+    method: "POST";
+    body: undefined;
+    result: { relation: StoredDocumentRelation };
+  };
+  "/api/relations/:id/dismiss": {
+    method: "POST";
+    body: { reason: string };
+    result: { relation: StoredDocumentRelation };
+  };
+  "/api/relations/:id/type": {
+    method: "PATCH";
+    body: { relation_type: StoredDocumentRelation["relation_type"] };
+    result: { relation: StoredDocumentRelation };
+  };
+  "/api/relations/:id/stale-obligations": {
+    method: "GET";
+    body: undefined;
+    result: {
+      obligations: {
+        id: number;
+        doc_id: string;
+        obligation_id: string;
+        action: string;
+        citations: Citation[];
+      }[];
+    };
+  };
+  "/api/relations/:id/stale-obligations/:obligation_id": {
+    method: "PATCH";
+    body: StaleDecision;
+    result: void;
+  };
 }
 
 export interface TaskFeed {
