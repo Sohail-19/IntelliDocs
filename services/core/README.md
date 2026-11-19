@@ -59,3 +59,21 @@ the Answer contract and rejects unverified claims, missing citations, or answer
 text outside the verified claim list. Valid abstentions pass through. Invalid
 input returns 422; unavailable intelligence or invalid upstream output returns
 502. Verification cannot be disabled through this route.
+
+After `POST /v1/upload` indexes a document or attachment, core runs obligation
+extraction and stores its results with an audit entry. Apply migrations before
+running this flow. The upload response includes `extraction_results`. If
+extraction fails, the upload returns 502 with `extraction_failed_document_ids`
+and the successful index results. The document remains indexed and its
+extraction status is recorded separately.
+
+- `GET /api/obligations` lists stored obligations and accepts `doc_id`, `status`,
+  `owner_department`, `due_before`, and `due_after`. Date bounds are exclusive
+  and use YYYY-MM-DD. Obligations without a normalized date do not satisfy
+  date filters.
+- `GET /api/documents/:id/obligations` uses the external document ID and returns
+  obligations with the document's extraction status and any error.
+- `POST /api/documents/:id/obligations` reruns extraction for an indexed
+  document. Success replaces that document's previous obligations in one
+  transaction, including when the result is empty. Failure retains the last
+  successful snapshot and records the failed step in the audit log.

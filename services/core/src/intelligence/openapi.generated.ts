@@ -214,6 +214,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
+        /** @description Extract and verify obligations from a stored document's indexed chunks. */
         post: {
             parameters: {
                 query?: never;
@@ -227,13 +228,13 @@ export interface paths {
                 };
             };
             responses: {
-                /** @description Extracted obligations */
+                /** @description Obligations with resolution details, citations, warnings and extraction statistics */
                 200: {
                     headers: {
                         [name: string]: unknown;
                     };
                     content: {
-                        "application/json": components["schemas"]["extract-obligations-response.v1.schema"];
+                        "application/json": components["schemas"]["extraction-result.v1.schema"];
                     };
                 };
             };
@@ -248,6 +249,13 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        /** Extract obligations response v1 */
+        "extract-obligations-response.v1.schema": {
+            obligations: components["schemas"]["obligation.v1.schema"][];
+            doc_id?: string;
+            warnings?: string[];
+            stats?: components["schemas"]["extraction-stats.v1.schema"];
+        };
         /** Ingest request v1 */
         "ingest-request.v1.schema": {
             /**
@@ -302,6 +310,7 @@ export interface components {
         /** ParseResult v1 */
         "parse-result.v1.schema": {
             document: components["schemas"]["document.v1.schema"];
+            org_id?: string;
             parser_name: string;
             parser_version: string;
             warnings: string[];
@@ -422,21 +431,74 @@ export interface components {
         "extract-obligations-request.v1.schema": {
             doc_id: string;
         };
+        /** Obligation owner v1 */
+        "obligation-owner.v1.schema": {
+            /** @description Owner wording copied from the document, or empty when absent. */
+            raw_text: string;
+            resolved_department: string | null;
+            resolved_role: string | null;
+            resolved: boolean;
+        };
+        /** Obligation deadline v1 */
+        "obligation-deadline.v1.schema": {
+            /** @description Deadline wording copied from the document, or empty when absent. */
+            raw_text: string;
+            normalized_date: string | null;
+            is_relative: boolean;
+            anchor_date: string | null;
+            resolved: boolean;
+        };
         /** Obligation v1 */
         "obligation.v1.schema": {
             id: string;
+            doc_id?: string;
             action: string;
-            owner: string;
-            /** Format: date-time */
-            deadline: string;
-            source: components["schemas"]["citation.v1.schema"];
+            owner: string | components["schemas"]["obligation-owner.v1.schema"];
+            deadline: string | components["schemas"]["obligation-deadline.v1.schema"];
+            /** @deprecated */
+            source?: components["schemas"]["citation.v1.schema"];
+            condition?: string;
+            /** @enum {string} */
+            obligation_type?: "duty" | "prohibition" | "reporting" | "payment" | "review" | "other";
+            citations?: components["schemas"]["citation.v1.schema"][];
             confidence: number;
             /** @enum {string} */
+            status: "extracted" | "verified" | "needs_review" | "rejected" | "open" | "in_progress" | "complete" | "cancelled";
+            extractor_version?: string;
+        } & ({
+            owner: string;
+            deadline: string;
+            /** @enum {string} */
             status: "open" | "in_progress" | "complete" | "cancelled";
+            source: components["schemas"]["citation.v1.schema"];
+        } | {
+            owner: components["schemas"]["obligation-owner.v1.schema"];
+            deadline: components["schemas"]["obligation-deadline.v1.schema"];
+            /** @enum {string} */
+            status: "extracted" | "verified" | "needs_review" | "rejected";
+            doc_id: string;
+            /** @enum {string} */
+            obligation_type: "duty" | "prohibition" | "reporting" | "payment" | "review" | "other";
+            citations: components["schemas"]["citation.v1.schema"][];
+            extractor_version: string;
+        });
+        /**
+         * Extraction stats v1
+         * @description Counts of returned obligations, with a counter for each extraction status.
+         */
+        "extraction-stats.v1.schema": {
+            total: number;
+            extracted: number;
+            verified: number;
+            needs_review: number;
+            rejected: number;
         };
-        /** Extract obligations response v1 */
-        "extract-obligations-response.v1.schema": {
+        /** Extraction result v1 */
+        "extraction-result.v1.schema": {
+            doc_id: string;
             obligations: components["schemas"]["obligation.v1.schema"][];
+            warnings: string[];
+            stats: components["schemas"]["extraction-stats.v1.schema"];
         };
     };
     responses: never;

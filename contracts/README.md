@@ -72,3 +72,37 @@ An answer includes `answer_text`, `claims`, `abstained`, `abstain_reason`,
 text, citations using the existing Citation schema, and a `verified` or
 `unverified` status. Empty `answer_text` and `claims` arrays can represent abstention.
 An empty `abstain_reason` represents an answer with no abstention reason.
+
+Phase 5 extends Obligation v1 with two compatible shapes. Legacy payloads retain
+string `owner`, timestamp `deadline`, required `source`, and lifecycle status
+(`open`, `in_progress`, `complete`, `cancelled`). Their existing example remains
+under `extract-obligations-response.v1.json`. New extraction producers use
+structured owners/deadlines and require `doc_id`, `obligation_type`, `citations`,
+and `extractor_version` alongside `id`, `action`, `confidence`, and `status`.
+Mixing legacy owner/deadline representations with an extraction status is invalid.
+
+Structured owners retain `raw_text` and explicitly include nullable
+`resolved_department` / `resolved_role` and a `resolved` boolean. Structured
+deadlines include `raw_text`, nullable `normalized_date` / `anchor_date`,
+`is_relative`, and `resolved`. Dates use calendar `YYYY-MM-DD` strings; unresolved
+values are null. Empty raw text represents a missing owner or deadline.
+Resolution fields are data only: these contracts do not resolve dates or infer
+organization-specific roles/departments. In Python serialization, retain nested
+nulls (use normal `model_dump(mode="json")`, without `exclude_none=True`).
+
+`condition` optionally retains a trigger's wording. `obligation_type` is `duty`,
+`prohibition`, `reporting`, `payment`, `review`, or `other`. Extraction statuses
+are `extracted`, `verified`, `needs_review`, or `rejected`. Confidence remains in
+`[0, 1]`; citations reuse Citation v1. The deprecated singular `source` may still
+be included for compatibility, but new producers use `citations`.
+
+`POST /v1/extract-obligations` still accepts a document ID and now returns
+ExtractionResult: `doc_id`, `obligations`, `warnings`, and `stats`. Stats include
+nonnegative integer counters `total`, `extracted`, `verified`, `needs_review`,
+and `rejected` for returned obligations. The former response schema still
+accepts its legacy envelope and these additive metadata fields.
+
+Extraction uses the stored ParseResult and the document's indexed chunks.
+New ParseResults include `org_id` so extraction uses the organization selected
+at ingestion. Older ParseResults use `DEFAULT_ORG_ID`. The endpoint returns
+404 for a missing document and 409 if its index is missing or incomplete.

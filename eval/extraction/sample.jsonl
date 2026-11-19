@@ -1,0 +1,2 @@
+{"doc_id": "reports-en", "language": "en", "obligations": [{"action": "File the report", "owner": {"department": "finance", "role": null}, "deadline": "2026-12-05", "page": 1, "clause_number": "1.1"}, {"action": "Retain the audit copy", "owner": {"department": "records", "role": null}, "deadline": null, "page": 2, "clause_number": "2.1"}]}
+{"doc_id": "notices-hi", "language": "hi", "obligations": [{"action": "सूचना भेजें", "owner": {"department": "legal", "role": null}, "deadline": "2026-12-05", "page": 1, "clause_number": "1"}]}

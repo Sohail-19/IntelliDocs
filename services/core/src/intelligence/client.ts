@@ -32,6 +32,11 @@ export type AnswerRequest = Schemas['answer-request.v1.schema'];
 export type Claim = Schemas['claim.v1.schema'];
 export type Answer = Schemas['answer.v1.schema'];
 export type ExtractObligationsRequest = Schemas['extract-obligations-request.v1.schema'];
+export type Obligation = Schemas['obligation.v1.schema'];
+export type ObligationOwner = Schemas['obligation-owner.v1.schema'];
+export type ObligationDeadline = Schemas['obligation-deadline.v1.schema'];
+export type ExtractionStats = Schemas['extraction-stats.v1.schema'];
+export type ExtractionResult = Schemas['extraction-result.v1.schema'];
 export type ExtractObligationsResponse = Schemas['extract-obligations-response.v1.schema'];
 
 export class IntelligenceError extends Error {
@@ -88,7 +93,7 @@ export class IntelligenceClient {
     return this.post('/v1/answer', request);
   }
 
-  extractObligations(request: ExtractObligationsRequest): Promise<ExtractObligationsResponse> {
+  extractObligations(request: ExtractObligationsRequest): Promise<ExtractionResult> {
     return this.post('/v1/extract-obligations', request);
   }
 

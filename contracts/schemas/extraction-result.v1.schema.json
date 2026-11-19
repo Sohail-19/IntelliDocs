@@ -1,0 +1,14 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "extraction-result.v1.schema.json",
+  "title": "Extraction result v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["doc_id", "obligations", "warnings", "stats"],
+  "properties": {
+    "doc_id": { "type": "string", "minLength": 1 },
+    "obligations": { "type": "array", "items": { "$ref": "obligation.v1.schema.json" } },
+    "warnings": { "type": "array", "items": { "type": "string" } },
+    "stats": { "$ref": "extraction-stats.v1.schema.json" }
+  }
+}

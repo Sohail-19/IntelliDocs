@@ -7,6 +7,7 @@
   "required": ["document", "parser_name", "parser_version", "warnings"],
   "properties": {
     "document": { "$ref": "document.v1.schema.json", "required": ["pages"] },
+    "org_id": { "type": "string", "pattern": "^[A-Za-z0-9_-]+$" },
     "parser_name": { "type": "string", "minLength": 1 },
     "parser_version": { "type": "string", "minLength": 1 },
     "warnings": { "type": "array", "items": { "type": "string" } },

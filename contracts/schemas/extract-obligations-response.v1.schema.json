@@ -6,6 +6,9 @@
   "additionalProperties": false,
   "required": ["obligations"],
   "properties": {
-    "obligations": { "type": "array", "items": { "$ref": "obligation.v1.schema.json" } }
+    "obligations": { "type": "array", "items": { "$ref": "obligation.v1.schema.json" } },
+    "doc_id": { "type": "string", "minLength": 1 },
+    "warnings": { "type": "array", "items": { "type": "string" } },
+    "stats": { "$ref": "extraction-stats.v1.schema.json" }
   }
 }

@@ -1,10 +1,99 @@
 {
-  "languages": ["en", "hi"],
+  "languages": [
+    "en",
+    "hi"
+  ],
   "ocr_engine": "tesseract",
-  "document_types": ["agreement", "invoice"],
-  "departments": ["legal", "finance"],
+  "document_types": [
+    "agreement",
+    "invoice"
+  ],
+  "departments": [
+    "legal",
+    "finance"
+  ],
   "routing_rules": [
-    { "document_type": "agreement", "department": "legal" },
-    { "document_type": "invoice", "department": "finance" }
-  ]
+    {
+      "document_type": "agreement",
+      "department": "legal"
+    },
+    {
+      "document_type": "invoice",
+      "department": "finance"
+    }
+  ],
+  "obligation_detection": {
+    "en": {
+      "cues": [
+        "shall",
+        "must",
+        "is required to",
+        "are required to",
+        "has to",
+        "have to"
+      ],
+      "date_patterns": [
+        "\\bwithin\\s+\\d+\\s+(?:(?:business|calendar)\\s+)?(?:days?|weeks?|months?)\\b",
+        "\\b\\d{1,2}[/.-]\\d{1,2}[/.-]\\d{2,4}\\b",
+        "\\b\\d{1,2}\\s+(?:january|february|march|april|may|june|july|august|september|october|november|december)\\b",
+        "\\b(?:january|february|march|april|may|june|july|august|september|october|november|december)\\s+\\d{1,2}\\b"
+      ],
+      "relative_deadline_patterns": [
+        "within (?P<days>\\d+) (?:calendar )?days?(?: (?:of|after) receipt)?",
+        "within (?P<weeks>\\d+) weeks?(?: (?:of|after) receipt)?",
+        "within (?P<months>\\d+) months?(?: (?:of|after) receipt)?",
+        "within (?P<years>\\d+) years?(?: (?:of|after) receipt)?",
+        "within (?P<unsupported>\\d+) (?:business|working) days?(?: (?:of|after) receipt)?"
+      ],
+      "absolute_deadline_wrappers": [
+        "(?:by|before|no later than) (?P<date>.+)"
+      ]
+    },
+    "hi": {
+      "cues": [
+        "करना होगा",
+        "करनी होगी",
+        "देना होगा",
+        "देनी होगी",
+        "अनिवार्य है",
+        "आवश्यक है",
+        "करना पड़ेगा"
+      ],
+      "date_patterns": [
+        "(?<!\\d)\\d+\\s*(?:दिन(?:ों)?|सप्ताह|महीन(?:े|ों))\\s*(?:के\\s+)?(?:भीतर|अंदर|में)",
+        "(?<!\\d)\\d{1,2}\\s+(?:जनवरी|फ़रवरी|फरवरी|मार्च|अप्रैल|मई|जून|जुलाई|अगस्त|सितंबर|अक्टूबर|नवंबर|दिसंबर)(?=\\s|\\W|$)"
+      ],
+      "relative_deadline_patterns": [
+        "(?:प्राप्ति के बाद )?(?P<days>\\d+) (?:दिन|दिनों) (?:के )?(?:भीतर|अंदर|में)",
+        "(?:प्राप्ति के बाद )?(?P<weeks>\\d+) सप्ताह (?:के )?(?:भीतर|अंदर|में)",
+        "(?:प्राप्ति के बाद )?(?P<months>\\d+) (?:महीने|महीनों) (?:के )?(?:भीतर|अंदर|में)",
+        "(?:प्राप्ति के बाद )?(?P<unsupported>\\d+) कार्य दिवस (?:के )?(?:भीतर|अंदर|में)"
+      ],
+      "absolute_deadline_wrappers": [
+        "(?P<date>.+) तक"
+      ]
+    }
+  },
+  "department_aliases": {
+    "legal": [
+      "Legal Department",
+      "Legal Dept.",
+      "विधि विभाग",
+      "क़ानूनी विभाग"
+    ],
+    "finance": [
+      "Finance Department",
+      "Finance Dept.",
+      "वित्त विभाग"
+    ]
+  },
+  "roles": {
+    "finance_officer": {
+      "department": "finance",
+      "aliases": [
+        "Finance Officer",
+        "वित्त अधिकारी"
+      ]
+    }
+  }
 }

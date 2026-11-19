@@ -1,0 +1,15 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "obligation-deadline.v1.schema.json",
+  "title": "Obligation deadline v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["raw_text", "normalized_date", "is_relative", "anchor_date", "resolved"],
+  "properties": {
+    "raw_text": { "type": "string", "description": "Deadline wording copied from the document, or empty when absent." },
+    "normalized_date": { "anyOf": [{ "type": "string", "format": "date" }, { "type": "null" }] },
+    "is_relative": { "type": "boolean" },
+    "anchor_date": { "anyOf": [{ "type": "string", "format": "date" }, { "type": "null" }] },
+    "resolved": { "type": "boolean" }
+  }
+}

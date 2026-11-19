@@ -11,6 +11,37 @@
     "ocr_engine": { "type": "string", "minLength": 1 },
     "document_types": { "type": "array", "items": { "type": "string", "minLength": 1 } },
     "departments": { "type": "array", "items": { "type": "string", "minLength": 1 } },
+    "department_aliases": {
+      "type": "object",
+      "description": "Alternate owner names keyed by a canonical department name.",
+      "additionalProperties": { "type": "array", "items": { "type": "string", "minLength": 1 } }
+    },
+    "roles": {
+      "type": "object",
+      "description": "Canonical role names with optional department and aliases.",
+      "additionalProperties": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "department": { "type": "string", "minLength": 1 },
+          "aliases": { "type": "array", "items": { "type": "string", "minLength": 1 } }
+        }
+      }
+    },
+    "obligation_detection": {
+      "type": "object",
+      "description": "Candidate detection settings keyed by a language from languages.",
+      "additionalProperties": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "cues": { "type": "array", "items": { "type": "string", "pattern": "\\S" } },
+          "date_patterns": { "type": "array", "items": { "type": "string", "pattern": "\\S" } },
+          "relative_deadline_patterns": { "type": "array", "items": { "type": "string", "minLength": 1 } },
+          "absolute_deadline_wrappers": { "type": "array", "items": { "type": "string", "minLength": 1 } }
+        }
+      }
+    },
     "routing_rules": {
       "type": "array",
       "items": {

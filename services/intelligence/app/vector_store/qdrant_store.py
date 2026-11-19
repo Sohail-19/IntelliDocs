@@ -186,3 +186,26 @@ class QdrantStore(VectorStore):
                     )
                 ),
             )
+
+    def load_document_chunks(self, doc_id: str) -> list[Chunk]:
+        """Read all indexed chunks for one document without querying vectors."""
+        if not self.client.collection_exists(self.collection_name):
+            return []
+        where = models.Filter(
+            must=[models.FieldCondition(key="doc_id", match=models.MatchValue(value=doc_id))]
+        )
+        chunks: list[Chunk] = []
+        offset = None
+        while True:
+            page, offset = self.client.scroll(
+                self.collection_name,
+                scroll_filter=where,
+                offset=offset,
+                limit=128,
+                with_payload=True,
+                with_vectors=False,
+            )
+            chunks.extend(Chunk.model_validate(point.payload) for point in page)
+            if offset is None:
+                break
+        return sorted(chunks, key=lambda chunk: (chunk.char_start, chunk.char_end, chunk.id))

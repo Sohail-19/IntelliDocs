@@ -1,0 +1,16 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "extraction-stats.v1.schema.json",
+  "title": "Extraction stats v1",
+  "description": "Counts of returned obligations, with a counter for each extraction status.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["total", "extracted", "verified", "needs_review", "rejected"],
+  "properties": {
+    "total": { "type": "integer", "minimum": 0 },
+    "extracted": { "type": "integer", "minimum": 0 },
+    "verified": { "type": "integer", "minimum": 0 },
+    "needs_review": { "type": "integer", "minimum": 0 },
+    "rejected": { "type": "integer", "minimum": 0 }
+  }
+}

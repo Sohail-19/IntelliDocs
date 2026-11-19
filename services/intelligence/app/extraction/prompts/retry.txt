@@ -1,0 +1,6 @@
+$original_prompt
+
+RETRY $attempt
+The previous response could not be read as valid JSON for OUTPUT_SCHEMA or used
+a chunk ID absent from CHUNKS_JSON. Return a fresh JSON object using only the
+supplied chunk IDs. Do not include Markdown or commentary.

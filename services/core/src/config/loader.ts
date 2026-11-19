@@ -17,6 +17,17 @@ export interface OrgConfig {
   ocr_engine: string;
   document_types: string[];
   departments: string[];
+  obligation_detection?: Record<
+    string,
+    {
+      cues?: string[];
+      date_patterns?: string[];
+      relative_deadline_patterns?: string[];
+      absolute_deadline_wrappers?: string[];
+    }
+  >;
+  department_aliases?: Record<string, string[]>;
+  roles?: Record<string, { department?: string; aliases?: string[] }>;
   routing_rules: RoutingRule[];
 }
 

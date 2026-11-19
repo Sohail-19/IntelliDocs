@@ -147,3 +147,79 @@ Reports default to ignored `eval/results/answers_<UTC-date>.json`; `--output`
 selects another path and `--overwrite` permits replacement. Reports contain
 input hashes, model/settings, prompt hashes, a Python random seed, both metric
 sets, and per-query outputs for review. No verifier bypass is exposed by HTTP.
+
+## Obligation extraction evaluation
+
+The [gold set](extraction/sample.jsonl) is UTF-8 JSONL, one record per document.
+Use its ingested `doc_id` and the document's evaluation `language` tag.
+An empty `obligations` list labels a document with no obligations.
+
+```jsonl
+{"doc_id":"reports-en","language":"en","obligations":[{"action":"File the report","owner":{"department":"finance","role":null},"deadline":"2026-12-05","page":1,"clause_number":"1.1"}]}
+```
+
+For each obligation, write the expected `action`, canonical owner department
+and role, and normalized calendar deadline in YYYY-MM-DD. Use `null` for an
+owner component or deadline when the expected result is unresolved or absent.
+Label the source with a one-based `page` and, when available, its
+`clause_number`. Use one label per distinct obligation.
+
+The evaluator reports the following metrics overall and per gold document
+language, with totals aggregated before computing rates.
+
+- **Obligation precision, recall and F1** use one-to-one action matching within
+  each document. Actions are normalized with Unicode NFKC, case folding, and
+  whitespace folding. Symmetric character similarity uses Python's
+  `SequenceMatcher` with a configurable threshold of 0.85 by default. Matching
+  maximizes pair count, preferring higher similarity and using the labeled page
+  and clause to break local ties. Rejected drafts are counted separately.
+- **Owner and deadline accuracy** use matched pairs. Owner fields must match
+  both canonical labels, and deadlines must match the normalized date. A gold
+  null requires an unresolved, null prediction for the corresponding field.
+- **Citation faithfulness** is the fraction of emitted citations whose literal
+  quote occurs inside the specified character span of the same document, with
+  the stated page bounds. Spans use zero-based, end-exclusive Unicode offsets
+  into canonical parsed text. Uncited predictions are reported separately.
+- **Needs review share** is the fraction of all emitted obligations, including
+  rejected drafts, with status `needs_review`.
+
+Undefined rates appear as `null` in JSON and `n/a` in the table. A missing
+document, source, or prediction fails the run. Provide an explicit
+ExtractionResult with an empty obligation list when the extractor emits none.
+
+Run the synthetic English and Hindi example offline:
+
+```sh
+uv run --project services/intelligence --no-sync python eval/extraction/evaluate_extraction.py
+```
+
+The bundled run scores hand-authored results. It exercises the evaluator's
+failure cases without running the verifier. Two of the three emitted citations
+are faithful (66.7%):
+
+- In `reports-en`, `file` cites the full report sentence at `[0:48]`. The
+  synthetic false positive `extra` (“Send payment”) supplies that same quote
+  but cites `[0:7]`, which contains only “Finance”.
+- In `notices-hi`, `notice` has a faithful citation at `[0:39]). Its owner and
+  deadline are deliberately unresolved, so it is flagged `needs_review` and
+  misses both field accuracy checks.
+- In `reports-en`, `rejected` (“Retain the audit copy”) is deliberately marked
+  rejected with no citations. Its gold action counts as a missed extraction
+  and it contributes no citation to the faithfulness denominator.
+
+To score your own snapshots, provide `--gold PATH --predictions PATH --sources PATH`.
+Prediction and source files are JSONL containing one v1 ExtractionResult and
+one v1 ParseResult per gold document, respectively. The ParseResult supplies
+the actual source text and page boundaries for checking citations. See the
+[sample predictions](extraction/sample_predictions.jsonl) and
+[sample sources](extraction/sample_sources.jsonl).
+
+To run the extractor instead of loading predictions, use
+`--gold PATH --existing-index --storage-root PATH` with the configured Qdrant and
+LLM environment. Keep the stored ParseResults, index, and org config fixed
+across comparisons. Set `--similarity-threshold` explicitly to use another cutoff.
+Report JSON includes the effective scoring settings, input hashes, raw counts,
+and per-document scores. Existing-index runs also record the model, extraction
+limits, and org config fingerprints. Reports default to ignored
+`eval/results/extraction_<UTC-date>.json`. Use `--output` to choose a report path
+or `--overwrite` to replace an existing report.

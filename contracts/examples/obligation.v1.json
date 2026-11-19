@@ -1,15 +1,32 @@
 {
   "id": "obl-001",
+  "doc_id": "doc-001",
   "action": "Submit the monthly report",
-  "owner": "supplier",
-  "deadline": "2026-12-05T17:00:00Z",
-  "source": {
-    "doc_id": "doc-001",
-    "page": 2,
-    "char_start": 15,
-    "char_end": 95,
-    "quote": "The supplier must submit the monthly report by the fifth business day."
+  "owner": {
+    "raw_text": "the supplier",
+    "resolved_department": null,
+    "resolved_role": null,
+    "resolved": false
   },
+  "deadline": {
+    "raw_text": "by the fifth business day after receipt",
+    "normalized_date": null,
+    "is_relative": true,
+    "anchor_date": null,
+    "resolved": false
+  },
+  "condition": "Receipt of the monthly reporting request",
+  "obligation_type": "reporting",
+  "citations": [
+    {
+      "doc_id": "doc-001",
+      "page": 2,
+      "char_start": 15,
+      "char_end": 99,
+      "quote": "The supplier must submit the monthly report by the fifth business day after receipt."
+    }
+  ],
   "confidence": 0.94,
-  "status": "open"
+  "status": "needs_review",
+  "extractor_version": "example-v1"
 }

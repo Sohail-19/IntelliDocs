@@ -1,6 +1,11 @@
 {
   "openapi": "3.1.0",
   "info": { "title": "IntelliDocs Intelligence API", "version": "v1" },
+  "components": {
+    "schemas": {
+      "extract-obligations-response.v1.schema": { "$ref": "../schemas/extract-obligations-response.v1.schema.json" }
+    }
+  },
   "paths": {
     "/health": {
       "get": {
@@ -47,9 +52,10 @@
     },
     "/v1/extract-obligations": {
       "post": {
+        "description": "Extract and verify obligations from a stored document's indexed chunks.",
         "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "../schemas/extract-obligations-request.v1.schema.json" } } } },
         "responses": {
-          "200": { "description": "Extracted obligations", "content": { "application/json": { "schema": { "$ref": "../schemas/extract-obligations-response.v1.schema.json" } } } }
+          "200": { "description": "Obligations with resolution details, citations, warnings and extraction statistics", "content": { "application/json": { "schema": { "$ref": "../schemas/extraction-result.v1.schema.json" } } } }
         }
       }
     }
