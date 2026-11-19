@@ -1,12 +1,23 @@
 """Pydantic models mirroring the versioned schemas in /contracts."""
 
 from datetime import date, datetime
-from typing import Annotated, Literal
+from typing import Annotated, Literal, Self
 
-from pydantic import BaseModel, ConfigDict, Field, FiniteFloat, StrictBool, field_validator
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    FiniteFloat,
+    SerializerFunctionWrapHandler,
+    StrictBool,
+    field_validator,
+    model_serializer,
+    model_validator,
+)
 
 NonEmptyString = Annotated[str, Field(min_length=1)]
 LanguageCode = Annotated[str, Field(min_length=2)]
+ObligationType = Literal["duty", "prohibition", "reporting", "payment", "review", "other"]
 
 
 class ContractModel(BaseModel):
@@ -76,6 +87,7 @@ class ParsedDocument(Document):
 
 class ParseResult(ContractModel):
     document: ParsedDocument
+    org_id: str | None = Field(default=None, pattern=r"^[A-Za-z0-9_-]+$")
     parser_name: NonEmptyString
     parser_version: NonEmptyString
     warnings: list[str]
@@ -124,14 +136,104 @@ class Citation(ContractModel):
     heading_path: list[NonEmptyString] | None = None
 
 
+class ObligationOwner(ContractModel):
+    raw_text: str
+    resolved_department: NonEmptyString | None
+    resolved_role: NonEmptyString | None
+    resolved: StrictBool
+
+
+class ObligationDeadline(ContractModel):
+    raw_text: str
+    normalized_date: date | None
+    is_relative: StrictBool
+    anchor_date: date | None
+    resolved: StrictBool
+
+    @field_validator("normalized_date", "anchor_date", mode="before")
+    @classmethod
+    def calendar_date(cls, value: object) -> object:
+        return UploadMetadata.explicit_date(value)
+
+
 class Obligation(ContractModel):
     id: NonEmptyString
     action: NonEmptyString
-    owner: NonEmptyString
-    deadline: datetime
-    source: Citation
-    confidence: float = Field(ge=0, le=1)
-    status: Literal["open", "in_progress", "complete", "cancelled"]
+    owner: ObligationOwner | NonEmptyString
+    deadline: ObligationDeadline | datetime
+    source: Citation | None = None
+    confidence: FiniteFloat = Field(ge=0, le=1)
+    status: Literal[
+        "extracted",
+        "verified",
+        "needs_review",
+        "rejected",
+        "open",
+        "in_progress",
+        "complete",
+        "cancelled",
+    ]
+    doc_id: NonEmptyString | None = None
+    condition: NonEmptyString | None = None
+    obligation_type: ObligationType | None = None
+    citations: list[Citation] | None = None
+    extractor_version: NonEmptyString | None = None
+
+    @model_validator(mode="after")
+    def compatible_shape(self) -> Self:
+        if self.status in {"open", "in_progress", "complete", "cancelled"}:
+            if (
+                not isinstance(self.owner, str)
+                or not isinstance(self.deadline, datetime)
+                or self.source is None
+            ):
+                raise ValueError(
+                    "Legacy obligations require a string owner, timestamp deadline and source"
+                )
+        else:
+            if not isinstance(self.owner, ObligationOwner) or not isinstance(
+                self.deadline, ObligationDeadline
+            ):
+                raise ValueError("Extraction obligations require structured owner and deadline")
+            for name in ("doc_id", "obligation_type", "citations", "extractor_version"):
+                if getattr(self, name) is None:
+                    raise ValueError(f"Extraction obligations require {name}")
+        return self
+
+    @model_serializer(mode="wrap")
+    def omit_absent_legacy_and_optional_fields(
+        self, handler: SerializerFunctionWrapHandler
+    ) -> dict[str, object]:
+        # Only omit this object's absent fields. Nested resolution objects must
+        # retain required null values for unknown departments, roles and dates.
+        value: dict[str, object] = handler(self)
+        source = value.get("source")
+        if isinstance(source, dict):
+            value["source"] = {name: item for name, item in source.items() if item is not None}
+        citations = value.get("citations")
+        if isinstance(citations, list):
+            value["citations"] = [
+                {name: item for name, item in citation.items() if item is not None}
+                if isinstance(citation, dict)
+                else citation
+                for citation in citations
+            ]
+        return {name: item for name, item in value.items() if item is not None}
+
+
+class ExtractionStats(ContractModel):
+    total: int = Field(ge=0, strict=True)
+    extracted: int = Field(ge=0, strict=True)
+    verified: int = Field(ge=0, strict=True)
+    needs_review: int = Field(ge=0, strict=True)
+    rejected: int = Field(ge=0, strict=True)
+
+
+class ExtractionResult(ContractModel):
+    doc_id: NonEmptyString
+    obligations: list[Obligation]
+    warnings: list[str]
+    stats: ExtractionStats
 
 
 class SearchResult(ContractModel):
@@ -147,6 +249,18 @@ class RoutingRule(ContractModel):
     department: NonEmptyString
 
 
+class ObligationDetectionRules(ContractModel):
+    cues: list[Annotated[str, Field(pattern=r"\S")]] = Field(default_factory=list)
+    date_patterns: list[Annotated[str, Field(pattern=r"\S")]] = Field(default_factory=list)
+    relative_deadline_patterns: list[NonEmptyString] = Field(default_factory=list)
+    absolute_deadline_wrappers: list[NonEmptyString] = Field(default_factory=list)
+
+
+class OrgRole(ContractModel):
+    department: NonEmptyString | None = None
+    aliases: list[NonEmptyString] = Field(default_factory=list)
+
+
 class OrgConfig(ContractModel):
     upload_defaults: UploadMetadata | None = None
     languages: list[LanguageCode] = Field(min_length=1)
@@ -154,6 +268,9 @@ class OrgConfig(ContractModel):
     document_types: list[NonEmptyString]
     departments: list[NonEmptyString]
     routing_rules: list[RoutingRule]
+    obligation_detection: dict[str, ObligationDetectionRules] = Field(default_factory=dict)
+    department_aliases: dict[str, list[NonEmptyString]] = Field(default_factory=dict)
+    roles: dict[str, OrgRole] = Field(default_factory=dict)
 
 
 class IngestRequest(UploadMetadata):
@@ -229,3 +346,6 @@ class ExtractObligationsRequest(ContractModel):
 
 class ExtractObligationsResponse(ContractModel):
     obligations: list[Obligation]
+    doc_id: NonEmptyString | None = None
+    warnings: list[str] | None = None
+    stats: ExtractionStats | None = None

@@ -6,8 +6,9 @@ from fastapi import Depends, FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.responses import JSONResponse
 
 from app.answering import AnswerFactory, answerer_from_env
+from app.extraction.service import ExtractionFactory, IndexNotReady, extraction_from_env
 from app.indexing import IndexingFactory, document_tree, indexer_from_env
-from app.ingestion import IngestionService, load_org, storage_from_env
+from app.ingestion import IngestionService, load_org, select_org_id, storage_from_env
 from app.retrieval.filters import InvalidFilter
 from app.search import SearchFactory, search_from_env
 from app.storage import Storage
@@ -15,8 +16,8 @@ from app.storage import Storage
 from .models import (
     Answer,
     AnswerRequest,
+    ExtractionResult,
     ExtractObligationsRequest,
-    ExtractObligationsResponse,
     IndexRequest,
     IndexResult,
     IngestResponse,
@@ -41,6 +42,12 @@ def get_answer_factory(storage: Annotated[Storage, Depends(storage_from_env)]) -
     return lambda: answerer_from_env(storage)
 
 
+def get_extraction_factory(
+    storage: Annotated[Storage, Depends(storage_from_env)],
+) -> ExtractionFactory:
+    return lambda: extraction_from_env(storage)
+
+
 @app.get("/health")
 def health() -> dict[str, str]:
     """Return the service liveness state."""
@@ -62,12 +69,14 @@ def ingest(
 ) -> IngestResponse | JSONResponse:
     """Persist a validated upload, parsed content, and attachment results."""
     try:
+        selected_org = select_org_id(org_id)
         result = IngestionService(storage).ingest(
             file,
-            load_org(org_id),
+            load_org(selected_org),
             UploadMetadata.model_validate(
                 {"department": department, "doc_type": doc_type, "doc_date": doc_date}
             ),
+            org_id=selected_org,
         )
     except HTTPException:
         raise
@@ -139,8 +148,20 @@ def answer(
         raise HTTPException(503, "Answer service unavailable") from error
 
 
-@app.post("/v1/extract-obligations", response_model=ExtractObligationsResponse)
-def extract_obligations(request: ExtractObligationsRequest) -> ExtractObligationsResponse:
-    """Return an empty, contract-valid obligation set until extraction is added."""
-    del request
-    return ExtractObligationsResponse(obligations=[])
+@app.post("/v1/extract-obligations", response_model=ExtractionResult)
+def extract_obligations(
+    request: ExtractObligationsRequest,
+    factory: Annotated[ExtractionFactory, Depends(get_extraction_factory)],
+) -> ExtractionResult:
+    """Extract and verify obligations from the document's indexed chunks."""
+    try:
+        with factory() as service:
+            return service.extract(request.doc_id)
+    except FileNotFoundError as error:
+        raise HTTPException(404, "Stored document not found") from error
+    except IndexNotReady as error:
+        raise HTTPException(409, str(error)) from error
+    except HTTPException:
+        raise
+    except Exception as error:
+        raise HTTPException(503, "Obligation extraction failed") from error

@@ -1,0 +1,14 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "obligation-owner.v1.schema.json",
+  "title": "Obligation owner v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["raw_text", "resolved_department", "resolved_role", "resolved"],
+  "properties": {
+    "raw_text": { "type": "string", "description": "Owner wording copied from the document, or empty when absent." },
+    "resolved_department": { "anyOf": [{ "type": "string", "minLength": 1 }, { "type": "null" }] },
+    "resolved_role": { "anyOf": [{ "type": "string", "minLength": 1 }, { "type": "null" }] },
+    "resolved": { "type": "boolean" }
+  }
+}

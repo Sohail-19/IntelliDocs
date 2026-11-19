@@ -1,0 +1,47 @@
+{
+  "doc_id": "doc-001",
+  "obligations": [
+    {
+      "id": "obl-001",
+      "doc_id": "doc-001",
+      "action": "Submit the monthly report",
+      "owner": {
+        "raw_text": "the supplier",
+        "resolved_department": null,
+        "resolved_role": null,
+        "resolved": false
+      },
+      "deadline": {
+        "raw_text": "by the fifth business day after receipt",
+        "normalized_date": null,
+        "is_relative": true,
+        "anchor_date": null,
+        "resolved": false
+      },
+      "condition": "Receipt of the monthly reporting request",
+      "obligation_type": "reporting",
+      "citations": [
+        {
+          "doc_id": "doc-001",
+          "page": 2,
+          "char_start": 15,
+          "char_end": 99,
+          "quote": "The supplier must submit the monthly report by the fifth business day after receipt."
+        }
+      ],
+      "confidence": 0.94,
+      "status": "needs_review",
+      "extractor_version": "example-v1"
+    }
+  ],
+  "warnings": [
+    "The deadline anchor and owner have not been resolved."
+  ],
+  "stats": {
+    "total": 1,
+    "extracted": 0,
+    "verified": 0,
+    "needs_review": 1,
+    "rejected": 0
+  }
+}

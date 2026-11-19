@@ -4,14 +4,53 @@
   "title": "Obligation v1",
   "type": "object",
   "additionalProperties": false,
-  "required": ["id", "action", "owner", "deadline", "source", "confidence", "status"],
+  "required": ["id", "action", "owner", "deadline", "confidence", "status"],
+  "oneOf": [
+    {
+      "description": "Legacy v1 obligations remain readable; new producers use the structured branch.",
+      "required": ["owner", "deadline", "status", "source"],
+      "properties": {
+        "owner": { "type": "string" },
+        "deadline": { "type": "string" },
+        "status": { "type": "string", "enum": ["open", "in_progress", "complete", "cancelled"] },
+        "source": { "$ref": "citation.v1.schema.json" }
+      }
+    },
+    {
+      "required": ["owner", "deadline", "status", "doc_id", "obligation_type", "citations", "extractor_version"],
+      "properties": {
+        "owner": { "$ref": "obligation-owner.v1.schema.json" },
+        "deadline": { "$ref": "obligation-deadline.v1.schema.json" },
+        "status": { "type": "string", "enum": ["extracted", "verified", "needs_review", "rejected"] },
+        "doc_id": { "type": "string", "minLength": 1 },
+        "obligation_type": { "type": "string", "enum": ["duty", "prohibition", "reporting", "payment", "review", "other"] },
+        "citations": { "type": "array", "items": { "$ref": "citation.v1.schema.json" } },
+        "extractor_version": { "type": "string", "minLength": 1 }
+      }
+    }
+  ],
   "properties": {
     "id": { "type": "string", "minLength": 1 },
+    "doc_id": { "type": "string", "minLength": 1 },
     "action": { "type": "string", "minLength": 1 },
-    "owner": { "type": "string", "minLength": 1 },
-    "deadline": { "type": "string", "format": "date-time" },
-    "source": { "$ref": "citation.v1.schema.json" },
+    "owner": {
+      "oneOf": [
+        { "type": "string", "minLength": 1, "deprecated": true },
+        { "$ref": "obligation-owner.v1.schema.json" }
+      ]
+    },
+    "deadline": {
+      "oneOf": [
+        { "type": "string", "format": "date-time", "deprecated": true },
+        { "$ref": "obligation-deadline.v1.schema.json" }
+      ]
+    },
+    "source": { "$ref": "citation.v1.schema.json", "deprecated": true },
+    "condition": { "type": "string", "minLength": 1 },
+    "obligation_type": { "type": "string", "enum": ["duty", "prohibition", "reporting", "payment", "review", "other"] },
+    "citations": { "type": "array", "items": { "$ref": "citation.v1.schema.json" } },
     "confidence": { "type": "number", "minimum": 0, "maximum": 1 },
-    "status": { "type": "string", "enum": ["open", "in_progress", "complete", "cancelled"] }
+    "status": { "type": "string", "enum": ["extracted", "verified", "needs_review", "rejected", "open", "in_progress", "complete", "cancelled"] },
+    "extractor_version": { "type": "string", "minLength": 1 }
   }
 }

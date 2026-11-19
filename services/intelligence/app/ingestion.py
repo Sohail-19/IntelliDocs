@@ -29,10 +29,15 @@ def upload_limit() -> int:
     return limit
 
 
-def load_org(org_id: str | None) -> OrgConfig:
+def select_org_id(org_id: str | None) -> str:
     selected = org_id or os.environ.get("DEFAULT_ORG_ID")
     if not selected or not re.fullmatch(r"[A-Za-z0-9_-]+", selected):
         raise HTTPException(400, "A valid org_id or DEFAULT_ORG_ID is required")
+    return selected
+
+
+def load_org(org_id: str | None) -> OrgConfig:
+    selected = select_org_id(org_id)
     root = Path(
         os.environ.get("ORG_CONFIG_DIR", Path(__file__).resolve().parents[3] / "config/orgs")
     )
@@ -55,7 +60,12 @@ class IngestionService:
         self.storage = storage
 
     def ingest(
-        self, upload: UploadFile, config: OrgConfig, metadata: UploadMetadata | None = None
+        self,
+        upload: UploadFile,
+        config: OrgConfig,
+        metadata: UploadMetadata | None = None,
+        *,
+        org_id: str | None = None,
     ) -> ParseResult:
         values = (config.upload_defaults or UploadMetadata()).model_dump(exclude_none=True)
         values.update((metadata or UploadMetadata()).model_dump(exclude_none=True))
@@ -124,6 +134,7 @@ class IngestionService:
             result.document.department = selected.department
             result.document.doc_type = selected.doc_type
             result.document.doc_date = selected.doc_date
+            result.org_id = org_id
             self.storage.save_result(identifier, result)
             return result
 

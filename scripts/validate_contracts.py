@@ -62,6 +62,13 @@ def validate_schema(schema: Any, path: Path, schemas: dict[Path, dict[str, Any]]
         node_type = node.get("type")
         if node_type is not None and node_type not in {"object", "array", "string", "integer", "number", "boolean", "null"}:
             raise ContractError(f"{path.relative_to(ROOT)}: unsupported type {node_type!r}")
+        for keyword in ("oneOf", "anyOf"):
+            if keyword in node:
+                alternatives = node[keyword]
+                if not isinstance(alternatives, list) or not alternatives or not all(isinstance(child, dict) for child in alternatives):
+                    raise ContractError(f"{path.relative_to(ROOT)}: {keyword} must be a nonempty array of schemas")
+                for child in alternatives:
+                    walk(child)
         for key in ("properties", "items", "additionalProperties", "if", "then"):
             value = node.get(key)
             if isinstance(value, dict):
@@ -90,6 +97,17 @@ def instance_type_matches(value: Any, expected: str) -> bool:
 
 
 def validate_instance(instance: Any, schema: dict[str, Any], source: Path, schema_path: Path, schemas: dict[Path, dict[str, Any]], location: str = "$") -> None:
+    for keyword in ("oneOf", "anyOf"):
+        if keyword in schema:
+            matches = 0
+            for alternative in schema[keyword]:
+                try:
+                    validate_instance(instance, alternative, source, schema_path, schemas, location)
+                except ContractError:
+                    continue
+                matches += 1
+            if matches == 0 or (keyword == "oneOf" and matches != 1):
+                raise ContractError(f"{source.relative_to(ROOT)}: {location} does not match {keyword}")
     if "$ref" in schema:
         target = (schema_path.parent / schema["$ref"]).resolve()
         validate_instance(instance, resolve_ref(schema["$ref"], schema_path, schemas), source, target, schemas, location)

@@ -7,6 +7,7 @@
     "status": "ready",
     "pages": [{ "page": 1, "language": "en", "blocks": [{ "type": "paragraph", "text": "Example text.", "bbox": [0, 0, 100, 20], "reading_order": 0 }] }]
   },
+  "org_id": "example",
   "parser_name": "example-parser",
   "parser_version": "1.0.0",
   "warnings": []

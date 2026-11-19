@@ -5,6 +5,7 @@ import type { DocumentRepository } from './documents.js';
 import { IntelligenceError } from './intelligence/client.js';
 import type {
   IntelligenceClient,
+  ExtractionResult,
   IngestRequest,
   IndexResult,
   ParseResult,
@@ -16,7 +17,10 @@ export interface UploadDependencies {
   maxBytes?: number;
 }
 
-export function uploadRouter(dependencies: UploadDependencies): Router {
+export function uploadRouter(
+  dependencies: UploadDependencies,
+  extract?: (docId: string) => Promise<ExtractionResult>,
+): Router {
   const router = Router();
   const maxBytes = dependencies.maxBytes ?? Number(process.env.MAX_UPLOAD_BYTES ?? 20971520);
   if (!Number.isSafeInteger(maxBytes) || maxBytes <= 0) throw new Error('Invalid MAX_UPLOAD_BYTES');
@@ -79,6 +83,8 @@ export function uploadRouter(dependencies: UploadDependencies): Router {
         const result = await dependencies.intelligence.ingest(request, filename);
         await dependencies.documents.save(result);
         const indexResults: IndexResult[] = [];
+        const extractionResults: ExtractionResult[] = [];
+        const extractionFailures: string[] = [];
         let failed = false;
         const documents: ParseResult[] = [result.parse_result];
         for (const parsed of documents) {
@@ -92,11 +98,26 @@ export function uploadRouter(dependencies: UploadDependencies): Router {
           } catch {
             failed = true;
             await dependencies.documents.setStatus(parsed.document.id, 'failed', 'Indexing failed');
+            continue;
+          }
+          if (extract) {
+            try {
+              extractionResults.push(await extract(parsed.document.id));
+            } catch {
+              extractionFailures.push(parsed.document.id);
+            }
           }
         }
-        res.status(failed ? 502 : 202).json({
+        res.status(failed || extractionFailures.length ? 502 : 202).json({
           ...result,
           index_results: indexResults,
+          ...(extract ? { extraction_results: extractionResults } : {}),
+          ...(extractionFailures.length
+            ? {
+                extraction_error: 'Some indexed documents failed obligation extraction.',
+                extraction_failed_document_ids: extractionFailures,
+              }
+            : {}),
           ...(failed
             ? { index_error: 'Some documents failed indexing; parsed documents remain stored.' }
             : {}),
