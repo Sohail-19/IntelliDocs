@@ -2,7 +2,7 @@ import type { Pool } from 'pg';
 import request from 'supertest';
 import { describe, expect, it, vi } from 'vitest';
 
-import { createApp } from '../src/app.js';
+import { fixtureAudit, scopedApp } from './scoped-app.js';
 import type { IngestResponse } from '../src/intelligence/client.js';
 import { PostgresObligationRepository } from '../src/obligations.js';
 import type {
@@ -71,6 +71,7 @@ function setup() {
     documentState: vi.fn<ObligationRepository['documentState']>().mockResolvedValue(indexed),
     replace: vi.fn<ObligationRepository['replace']>().mockResolvedValue(undefined),
     recordFailure: vi.fn<ObligationRepository['recordFailure']>().mockResolvedValue(undefined),
+    mutate: vi.fn<ObligationRepository['mutate']>().mockResolvedValue('updated'),
     list: vi.fn<ObligationRepository['list']>().mockResolvedValue(extraction.obligations),
   };
   const index = vi
@@ -78,7 +79,7 @@ function setup() {
     .mockResolvedValue({ doc_id: 'doc-a', chunk_count: 1, embedding_model: 'fake', warnings: [] });
   const extractObligations = vi.fn().mockResolvedValue(extraction);
   const setStatus = vi.fn().mockResolvedValue(undefined);
-  const app = createApp({
+  const app = scopedApp({
     intelligence: { ingest: vi.fn().mockResolvedValue(ingested), index, extractObligations },
     documents: { save: vi.fn().mockResolvedValue(undefined), setStatus },
     obligations: repository,
@@ -94,12 +95,19 @@ describe('obligation routes', () => {
       .attach('file', Buffer.from('PDF'), 'policy.pdf');
     expect(uploaded.status).toBe(202);
     expect(uploaded.body).toMatchObject({ extraction_results: [extraction] });
-    expect(setStatus).toHaveBeenCalledWith('doc-a', 'indexed');
+    expect(setStatus).toHaveBeenCalledWith(
+      'doc-a',
+      expect.objectContaining({ orgId: 42 }),
+      'indexed',
+    );
     expect(setStatus.mock.invocationCallOrder[0]).toBeLessThan(
       extractObligations.mock.invocationCallOrder[0] ?? 0,
     );
     expect(extractObligations).toHaveBeenCalledWith({ doc_id: 'doc-a' });
-    expect(repository.replace).toHaveBeenCalledWith(extraction);
+    expect(repository.replace).toHaveBeenCalledWith(
+      extraction,
+      expect.objectContaining({ orgId: 42 }),
+    );
     expect((await request(app).post('/api/documents/doc-a/obligations')).status).toBe(200);
     expect(repository.replace).toHaveBeenCalledTimes(2);
   });
@@ -113,8 +121,15 @@ describe('obligation routes', () => {
     expect(failed.status).toBe(502);
     expect(failed.body).toMatchObject({ extraction_failed_document_ids: ['doc-a'] });
     expect(setStatus).toHaveBeenCalledTimes(1);
-    expect(setStatus).toHaveBeenCalledWith('doc-a', 'indexed');
-    expect(repository.recordFailure).toHaveBeenCalledWith('doc-a');
+    expect(setStatus).toHaveBeenCalledWith(
+      'doc-a',
+      expect.objectContaining({ orgId: 42 }),
+      'indexed',
+    );
+    expect(repository.recordFailure).toHaveBeenCalledWith(
+      'doc-a',
+      expect.objectContaining({ orgId: 42 }),
+    );
     expect(repository.replace).not.toHaveBeenCalled();
     index.mockRejectedValueOnce(new Error('index unavailable'));
     const unindexed = await request(app)
@@ -131,7 +146,10 @@ describe('obligation routes', () => {
     expect(extractObligations).not.toHaveBeenCalled();
     extractObligations.mockResolvedValueOnce({ ...extraction, doc_id: 'wrong' });
     expect((await request(app).post('/api/documents/doc-a/obligations')).status).toBe(502);
-    expect(repository.recordFailure).toHaveBeenCalledWith('doc-a');
+    expect(repository.recordFailure).toHaveBeenCalledWith(
+      'doc-a',
+      expect.objectContaining({ orgId: 42 }),
+    );
     expect(repository.replace).not.toHaveBeenCalled();
   });
 
@@ -147,16 +165,38 @@ describe('obligation routes', () => {
     const all = await request(app).get('/api/obligations').query(filters);
     expect(all.status).toBe(200);
     expect(all.body).toEqual({ obligations: extraction.obligations });
-    expect(repository.list).toHaveBeenCalledWith(filters);
+    expect(repository.list).toHaveBeenCalledWith(filters, 42);
     const document = await request(app).get('/api/documents/doc-a/obligations');
     expect(document.body).toEqual({
       obligations: extraction.obligations,
       extraction_status: 'completed',
       extraction_error: null,
     });
-    expect(repository.list).toHaveBeenLastCalledWith({ doc_id: 'doc-a' });
+    expect(repository.list).toHaveBeenLastCalledWith({ doc_id: 'doc-a' }, 42);
     repository.documentState.mockResolvedValueOnce(undefined);
     expect((await request(app).get('/api/documents/missing/obligations')).status).toBe(404);
+  });
+
+  it('rejects a score inconsistent with its evidence before storing or routing it', async () => {
+    const { app, repository, extractObligations } = setup();
+    extractObligations.mockResolvedValueOnce({
+      ...extraction,
+      obligations: extraction.obligations.map((item) => ({
+        ...item,
+        confidence: 0.9,
+        confidence_breakdown: {
+          quote_exact: 0.25,
+          quote_fuzzy: 0,
+          owner_resolved: 0,
+          deadline_resolved: 0,
+          recognized_cue: 0,
+          cross_chunk_agreement: 0,
+        },
+      })),
+    });
+    expect((await request(app).post('/api/documents/doc-a/obligations')).status).toBe(502);
+    expect(repository.replace).not.toHaveBeenCalled();
+    expect(repository.recordFailure).toHaveBeenCalled();
   });
 
   it.each(['due_after=2026-02-30', 'status=made_up', 'doc_id=a&doc_id=b'])(
@@ -173,16 +213,22 @@ describe('obligation repository', () => {
   it('replaces the previous snapshot and records its audit in one transaction', async () => {
     const query = vi
       .fn<(statement: string, parameters?: unknown[]) => Promise<unknown>>()
-      .mockResolvedValue({ rows: [{ id: 10 }] });
+
+      .mockResolvedValueOnce({})
+      .mockResolvedValueOnce({ rows: [{ id: 10 }] })
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({ rows: [{ id: 100, assigned_user_id: null }] })
+      .mockResolvedValue({});
     const connection = { query, release: vi.fn() };
     const pool = { connect: vi.fn().mockResolvedValue(connection) } as unknown as Pool;
     const repository = new PostgresObligationRepository(pool);
-    await repository.replace(extraction);
+    await repository.replace(extraction, fixtureAudit);
     expect(query.mock.calls.map(([statement]) => statement)).toEqual([
       'BEGIN',
-      expect.stringContaining('UPDATE documents'),
-      'DELETE FROM obligations WHERE document_id = $1',
+      expect.stringContaining('SELECT d.id, d.extraction_status'),
+      expect.stringContaining('SELECT id AS row_id'),
       expect.stringContaining('INSERT INTO obligations'),
+      expect.stringContaining('UPDATE documents'),
       expect.stringContaining('INSERT INTO audit_log'),
       'COMMIT',
     ]);
@@ -194,13 +240,13 @@ describe('obligation repository', () => {
       .fn()
       .mockResolvedValueOnce({})
       .mockResolvedValueOnce({ rows: [{ id: 10 }] })
-      .mockResolvedValueOnce({})
+      .mockResolvedValueOnce({ rows: [] })
       .mockRejectedValueOnce(new Error('insert failed'));
     const connection = { query, release: vi.fn() };
     const repository = new PostgresObligationRepository({
       connect: vi.fn().mockResolvedValue(connection),
     } as unknown as Pool);
-    await expect(repository.replace(extraction)).rejects.toThrow('insert failed');
+    await expect(repository.replace(extraction, fixtureAudit)).rejects.toThrow('insert failed');
     expect(query).toHaveBeenLastCalledWith('ROLLBACK');
     expect(connection.release).toHaveBeenCalled();
   });

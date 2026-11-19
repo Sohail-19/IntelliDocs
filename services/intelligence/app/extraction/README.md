@@ -25,6 +25,8 @@ detector tries all configured rules. ISO-style dates can also flag a candidate.
 | `EXTRACTION_BATCH_SIZE` | 4 | Candidate chunks per provider request. |
 | `EXTRACTION_MAX_CHUNKS_PER_DOCUMENT` | 20 | Unique candidate chunks selected in input order per run. Set 0 to skip provider calls. |
 | `EXTRACTION_MAX_RETRIES` | 1 | Additional attempts per batch after invalid JSON or schema output. |
+| `EXTRACTION_FUZZY_THRESHOLD` | 1.0 | Minimum normalized quote similarity. Use 1.0 for exact matching. A lower value enables fuzzy attribution. |
+| `EXTRACTION_CONFIDENCE_WEIGHTS` | See below | JSON object with optional overrides for the six evidence weights. |
 
 The per-document cap limits selected chunks. Each uncached batch may make
 one request plus the configured retries. Validated results reuse the existing
@@ -33,9 +35,10 @@ many chunks missed the detection rules or fell beyond the cap. If a batch
 exhausts its retries, the call raises `ExtractionError`. Successful batches
 from that run remain cached.
 
-The processor rejects obligations whose quotes fail exact matching after
-Unicode normalization and whitespace folding. It resolves owner and deadline
-wording only when that wording appears in the verified quote. The
+The processor checks quotes after Unicode normalization and whitespace folding.
+It rejects drafts when neither the exact match nor an enabled fuzzy match
+locates a source span. It resolves owner and deadline wording only when that
+wording appears in the canonical source quote. The
 `department_aliases` map lists alternate names for departments. The `roles`
 map defines role names, their optional department, and spelling variants under
 `aliases`. Owner matching folds Unicode, case, punctuation and whitespace.
@@ -57,4 +60,27 @@ does not by itself require review.
 
 Duplicates with the same action, owner, deadline and condition merge their
 distinct citations. The processor keeps different conditions and rejected
-drafts separate. Drafts carry no calibrated confidence score, so results use 0.
+drafts separate.
+
+## Evidence confidence
+
+The obligation's `confidence_breakdown` records six additive contributions.
+The extractor calculates these from verified source evidence and org rules
+after the drafts have been deduplicated.
+
+| Key | Default weight | Evidence |
+| --- | ---: | --- |
+| `quote_exact` | 0.25 | The draft exactly matches the canonical citation after normalization and whitespace folding. |
+| `quote_fuzzy` | 0.12 | Fuzzy attribution verified the citation and no exact match contributed. |
+| `owner_resolved` | 0.55 | The cited owner resolves to a configured department or role. |
+| `deadline_resolved` | 0.10 | The cited deadline resolves to a calendar date. |
+| `recognized_cue` | 0.05 | The canonical quote contains a configured cue for the chunk's language. |
+| `cross_chunk_agreement` | 0.05 | Matching drafts of the same obligation type independently cite non-overlapping spans from different chunks. |
+
+Each present signal earns its weight divided by the maximum attainable
+weight. The maximum uses the exact quote weight and the four non-quote
+weights. Exact and fuzzy credit are mutually exclusive. The contributions
+sum to confidence on a 0–1 scale. Overrides accept numbers from 0 to 1 and
+keep the exact weight strictly higher than the fuzzy weight. Scores are
+deterministic evidence scores. Calibration against labeled data is a
+separate evaluation step.

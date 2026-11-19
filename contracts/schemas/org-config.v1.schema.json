@@ -6,6 +6,22 @@
   "additionalProperties": false,
   "required": ["languages", "ocr_engine", "document_types", "departments", "routing_rules"],
   "properties": {
+    "access": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["bootstrap_role", "registration_role", "role_permissions"],
+      "properties": {
+        "bootstrap_role": { "type": "string", "minLength": 1 },
+        "registration_role": { "type": "string", "minLength": 1 },
+        "role_permissions": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "array",
+            "items": { "type": "string", "minLength": 1 }
+          }
+        }
+      }
+    },
     "upload_defaults": { "$ref": "upload-metadata.v1.schema.json" },
     "languages": { "type": "array", "minItems": 1, "items": { "type": "string", "minLength": 2 } },
     "ocr_engine": { "type": "string", "minLength": 1 },
@@ -42,16 +58,63 @@
         }
       }
     },
+    "routing_policy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["min_confidence", "review_role"],
+      "properties": {
+        "min_confidence": { "type": "number", "minimum": 0, "maximum": 1 },
+        "review_role": { "type": "string", "pattern": "\\S" }
+      }
+    },
     "routing_rules": {
       "type": "array",
       "items": {
-        "type": "object",
-        "additionalProperties": false,
-        "required": ["document_type", "department"],
-        "properties": {
-          "document_type": { "type": "string", "minLength": 1 },
-          "department": { "type": "string", "minLength": 1 }
-        }
+        "oneOf": [
+          {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["id", "conditions", "target", "priority"],
+            "properties": {
+              "id": { "type": "string", "pattern": "^[A-Za-z0-9_-]+$" },
+              "priority": { "type": "integer", "minimum": 0, "maximum": 2147483647 },
+              "conditions": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "obligation_type": { "type": "string", "enum": ["duty", "prohibition", "reporting", "payment", "review", "other"] },
+                  "owner_department": { "type": "string", "pattern": "\\S" },
+                  "document_type": { "type": "string", "pattern": "\\S" },
+                  "keywords": {
+                    "type": "array", "minItems": 1,
+                    "items": { "type": "string", "pattern": "\\S" }
+                  },
+                  "deadline_within_days": { "type": "integer", "minimum": 0, "maximum": 36500 }
+                }
+              },
+              "target": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["kind", "value"],
+                "properties": {
+                  "kind": { "type": "string", "enum": ["user", "role_queue", "department_queue"] },
+                  "value": { "type": "string", "pattern": "\\S" }
+                }
+              },
+              "escalation_after_days": { "type": "integer", "minimum": 0, "maximum": 36500 }
+            }
+          },
+          {
+            "type": "object",
+            "description": "Legacy document-to-department metadata, accepted without routing_policy.",
+            "additionalProperties": false,
+            "required": ["document_type", "department"],
+            "properties": {
+              "document_type": { "type": "string", "minLength": 1 },
+              "department": { "type": "string", "minLength": 1 }
+            }
+          }
+        ]
       }
     }
   }

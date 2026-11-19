@@ -25,26 +25,30 @@ from intellidocs_intelligence.llm import FakeProvider
 from intellidocs_intelligence.main import app, get_extraction_factory, get_indexing_factory
 
 QUOTE = "Finance Officer must file the report by 5 December 2026."
+UNRESOLVED_QUOTE = "External Supplier must file the report by 5 December 2026."
 
 
 class PolicyProvider(FakeProvider):
     def generate(self, prompt: str, schema: dict[str, Any]) -> dict[str, Any]:
         chunks = json.loads(prompt.split("CHUNKS_JSON\n", 1)[1])
+        sources = [(QUOTE, "Finance Officer"), (UNRESOLVED_QUOTE, "External Supplier")]
         self.response = {
             "obligations": [
                 {
                     "chunk_id": chunk["chunk_id"],
                     "action": "File the report",
-                    "owner_text": "Finance Officer",
+                    "owner_text": owner,
                     "deadline_text": "by 5 December 2026",
                     "condition": None,
                     "obligation_type": "reporting",
-                    "quote": QUOTE,
+                    "quote": quote,
                 }
                 for chunk in chunks
+                for quote, owner in sources
+                if quote in chunk["text"]
             ],
         }
-        assert all(QUOTE in chunk["text"] for chunk in chunks)
+        assert all(any(quote in chunk["text"] for quote, _ in sources) for chunk in chunks)
         return super().generate(prompt, schema)
 
 
@@ -117,10 +121,30 @@ def test_extract_uses_stored_index_and_org_and_returns_stable_citations(
     validate_contract(result, "extraction-result.v1.schema.json")
     [item] = result["obligations"]
     assert item["status"] == "verified" and item["owner"]["resolved_department"] == "finance"
+    assert item["confidence"] > 0.5
+    assert item["confidence_breakdown"]["quote_exact"] > 0
+    assert sum(item["confidence_breakdown"].values()) == pytest.approx(item["confidence"])
     assert item["deadline"]["normalized_date"] == "2026-12-05"
     [citation] = item["citations"]
     text = canonical_document(storage.load_result(identifier).document).text
     assert text[citation["char_start"] : citation["char_end"]] == QUOTE
+
+
+def test_extract_returns_scores_on_both_sides_of_routing_threshold(
+    pipeline: tuple[LocalStorage, QdrantStore, PolicyProvider],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.delenv("EXTRACTION_CONFIDENCE_WEIGHTS", raising=False)
+    with TestClient(app) as client:
+        identifier = ingest(client, f"{QUOTE}\n\n{UNRESOLVED_QUOTE}")
+        assert client.post("/v1/index", json={"doc_id": identifier}).status_code == 200
+        response = client.post("/v1/extract-obligations", json={"doc_id": identifier})
+    assert response.status_code == 200, response.text
+    verified, review = sorted(response.json()["obligations"], key=lambda item: -item["confidence"])
+    assert verified["status"] == "verified" and verified["confidence"] == pytest.approx(0.95)
+    assert review["status"] == "needs_review" and review["confidence"] == pytest.approx(0.4)
+    assert review["confidence_breakdown"]["owner_resolved"] == 0
+    assert review["citations"][0]["quote"] == UNRESOLVED_QUOTE
 
 
 def test_extract_requires_index_and_rejects_missing_chunks(

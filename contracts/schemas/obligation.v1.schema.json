@@ -50,6 +50,20 @@
     "obligation_type": { "type": "string", "enum": ["duty", "prohibition", "reporting", "payment", "review", "other"] },
     "citations": { "type": "array", "items": { "$ref": "citation.v1.schema.json" } },
     "confidence": { "type": "number", "minimum": 0, "maximum": 1 },
+    "confidence_breakdown": {
+      "description": "Evidence contributions on the confidence scale. The six contributions sum to confidence, within floating-point precision. Exact and fuzzy quote contributions are mutually exclusive.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["quote_exact", "quote_fuzzy", "owner_resolved", "deadline_resolved", "recognized_cue", "cross_chunk_agreement"],
+      "properties": {
+        "quote_exact": { "type": "number", "minimum": 0, "maximum": 1 },
+        "quote_fuzzy": { "type": "number", "minimum": 0, "maximum": 1 },
+        "owner_resolved": { "type": "number", "minimum": 0, "maximum": 1 },
+        "deadline_resolved": { "type": "number", "minimum": 0, "maximum": 1 },
+        "recognized_cue": { "type": "number", "minimum": 0, "maximum": 1 },
+        "cross_chunk_agreement": { "type": "number", "minimum": 0, "maximum": 1 }
+      }
+    },
     "status": { "type": "string", "enum": ["extracted", "verified", "needs_review", "rejected", "open", "in_progress", "complete", "cancelled"] },
     "extractor_version": { "type": "string", "minLength": 1 }
   }

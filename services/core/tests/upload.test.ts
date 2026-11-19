@@ -2,7 +2,7 @@ import type { Pool } from 'pg';
 import request from 'supertest';
 import { describe, expect, it, vi } from 'vitest';
 
-import { createApp } from '../src/app.js';
+import { fixtureAudit, scopedApp } from './scoped-app.js';
 import { PostgresDocumentRepository } from '../src/documents.js';
 import { IntelligenceError } from '../src/intelligence/client.js';
 import type { IngestResponse } from '../src/intelligence/client.js';
@@ -53,7 +53,7 @@ describe('core upload flow', () => {
       }),
     );
     const setStatus = vi.fn().mockResolvedValue(undefined);
-    const app = createApp({ intelligence: { ingest, index }, documents: { save, setStatus } });
+    const app = scopedApp({ intelligence: { ingest, index }, documents: { save, setStatus } });
     const result = await request(app)
       .post('/v1/upload')
       .field('org_id', 'example')
@@ -67,12 +67,20 @@ describe('core upload flow', () => {
     expect(call[1]).toBe('mail.eml');
     expect(call[0].org_id).toBe('example');
     expect(await call[0].file.text()).toBe('original message');
-    expect(save).toHaveBeenCalledWith(response);
+    expect(save).toHaveBeenCalledWith(response, expect.objectContaining({ orgId: 42 }));
     expect((ingest.mock.calls[0] as [{ index: boolean }])[0].index).toBe(false);
     expect(index).toHaveBeenNthCalledWith(1, { doc_id: 'parent' });
     expect(index).toHaveBeenNthCalledWith(2, { doc_id: 'child' });
-    expect(setStatus).toHaveBeenCalledWith('parent', 'indexed');
-    expect(setStatus).toHaveBeenCalledWith('child', 'indexed');
+    expect(setStatus).toHaveBeenCalledWith(
+      'parent',
+      expect.objectContaining({ orgId: 42 }),
+      'indexed',
+    );
+    expect(setStatus).toHaveBeenCalledWith(
+      'child',
+      expect.objectContaining({ orgId: 42 }),
+      'indexed',
+    );
     expect(save.mock.invocationCallOrder[0]).toBeLessThan(
       index.mock.invocationCallOrder[0] ?? Infinity,
     );
@@ -80,7 +88,7 @@ describe('core upload flow', () => {
 
   it('rejects oversized files before calling intelligence', async () => {
     const ingest = vi.fn();
-    const app = createApp({
+    const app = scopedApp({
       intelligence: { ingest, index: vi.fn() },
       documents: { save: vi.fn(), setStatus: vi.fn() },
       maxBytes: 4,
@@ -94,7 +102,7 @@ describe('core upload flow', () => {
 
   it('does not persist when intelligence rejects the upload', async () => {
     const save = vi.fn();
-    const app = createApp({
+    const app = scopedApp({
       intelligence: {
         ingest: vi.fn().mockRejectedValue(new IntelligenceError(415)),
         index: vi.fn(),
@@ -109,7 +117,7 @@ describe('core upload flow', () => {
   });
 
   it('does not report success when Postgres persistence fails', async () => {
-    const app = createApp({
+    const app = scopedApp({
       intelligence: { ingest: vi.fn().mockResolvedValue(response), index: vi.fn() },
       documents: {
         save: vi.fn().mockRejectedValue(new Error('database unavailable')),
@@ -126,7 +134,7 @@ describe('core upload flow', () => {
     const setStatus = vi.fn().mockResolvedValue(undefined);
     const save = vi.fn().mockResolvedValue(undefined);
     const index = vi.fn().mockRejectedValue(new IntelligenceError(503));
-    const app = createApp({
+    const app = scopedApp({
       intelligence: { ingest: vi.fn().mockResolvedValue(response), index },
       documents: { save, setStatus },
     });
@@ -137,14 +145,24 @@ describe('core upload flow', () => {
     const body = result.body as { document_id: string; index_error?: string };
     expect(body.document_id).toBe('parent');
     expect(typeof body.index_error).toBe('string');
-    expect(setStatus).toHaveBeenCalledWith('parent', 'failed', 'Indexing failed');
-    expect(setStatus).toHaveBeenCalledWith('child', 'failed', 'Indexing failed');
+    expect(setStatus).toHaveBeenCalledWith(
+      'parent',
+      expect.objectContaining({ orgId: 42 }),
+      'failed',
+      'Indexing failed',
+    );
+    expect(setStatus).toHaveBeenCalledWith(
+      'child',
+      expect.objectContaining({ orgId: 42 }),
+      'failed',
+      'Indexing failed',
+    );
     expect(save).toHaveBeenCalled();
   });
 
   it('forwards explicit metadata without guessing dates', async () => {
     const ingest = vi.fn().mockResolvedValue(response);
-    const app = createApp({
+    const app = scopedApp({
       intelligence: {
         ingest,
         index: vi.fn().mockImplementation((request: { doc_id: string }) =>
@@ -182,19 +200,29 @@ describe('core upload flow', () => {
 
 describe('document repository', () => {
   it('updates indexing status and rejects a missing row', async () => {
+    const before = { status: 'parsed', index_error: null, indexed_at: null };
+    const after = { status: 'indexed', index_error: null, indexed_at: new Date('2026-01-01') };
     const query = vi
       .fn()
-      .mockResolvedValueOnce({ rowCount: 1 })
-      .mockResolvedValueOnce({ rowCount: 0 });
-    const pool = { query } as unknown as Pool;
+      .mockResolvedValueOnce({})
+      .mockResolvedValueOnce({ rows: [before] })
+      .mockResolvedValueOnce({ rows: [after] })
+      .mockResolvedValueOnce({})
+      .mockResolvedValueOnce({})
+      .mockResolvedValueOnce({})
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({});
+    const connection = { query, release: vi.fn() };
+    const pool = { connect: vi.fn().mockResolvedValue(connection) } as unknown as Pool;
     const repository = new PostgresDocumentRepository(pool);
-    await repository.setStatus('parent', 'indexed');
-    expect(query).toHaveBeenCalledWith(expect.stringContaining('indexed_at'), [
+    await repository.setStatus('parent', fixtureAudit, 'indexed');
+    expect(query).toHaveBeenCalledWith(expect.stringContaining('UPDATE documents'), [
       'parent',
       'indexed',
       null,
+      42,
     ]);
-    await expect(repository.setStatus('missing', 'failed', 'failed')).rejects.toThrow(
+    await expect(repository.setStatus('missing', fixtureAudit, 'failed', 'failed')).rejects.toThrow(
       'no matching row',
     );
   });
@@ -204,17 +232,17 @@ describe('document repository', () => {
       release: vi.fn(),
     };
     const pool = { connect: vi.fn().mockResolvedValue(connection) } as unknown as Pool;
-    await new PostgresDocumentRepository(pool).save(response);
+    await new PostgresDocumentRepository(pool).save(response, fixtureAudit);
     expect(connection.query).toHaveBeenNthCalledWith(1, 'BEGIN');
     expect(connection.query).toHaveBeenNthCalledWith(
       2,
       expect.stringContaining('INSERT INTO documents'),
-      ['parent', 'mail.eml', 'parsed', null, null],
+      ['parent', 'mail.eml', 'parsed', null, null, 42, null],
     );
     expect(connection.query).toHaveBeenNthCalledWith(
-      3,
+      4,
       expect.stringContaining('INSERT INTO documents'),
-      ['child', 'attached.pdf', 'parsed', 42, null],
+      ['child', 'attached.pdf', 'parsed', 42, null, 42, null],
     );
     expect(connection.query).toHaveBeenLastCalledWith('COMMIT');
     expect(connection.release).toHaveBeenCalled();
@@ -228,7 +256,7 @@ describe('document repository', () => {
       .mockRejectedValueOnce(new Error('insert failed'));
     const connection = { query, release: vi.fn() };
     const pool = { connect: vi.fn().mockResolvedValue(connection) } as unknown as Pool;
-    await expect(new PostgresDocumentRepository(pool).save(response)).rejects.toThrow(
+    await expect(new PostgresDocumentRepository(pool).save(response, fixtureAudit)).rejects.toThrow(
       'insert failed',
     );
     expect(query).toHaveBeenLastCalledWith('ROLLBACK');

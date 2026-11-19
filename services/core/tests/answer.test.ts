@@ -3,7 +3,7 @@ import { readFileSync } from 'node:fs';
 import request from 'supertest';
 import { describe, expect, it, vi } from 'vitest';
 
-import { createApp } from '../src/app.js';
+import { scopedApp } from './scoped-app.js';
 import { IntelligenceError } from '../src/intelligence/client.js';
 import type { Answer, IntelligenceClient } from '../src/intelligence/client.js';
 
@@ -12,7 +12,7 @@ const example = JSON.parse(
 ) as Answer;
 
 function appWithAnswer(answer: IntelligenceClient['answer']) {
-  return createApp({
+  return scopedApp({
     intelligence: { answer, ingest: vi.fn(), index: vi.fn() },
     documents: { save: vi.fn(), setStatus: vi.fn() },
   });
@@ -34,7 +34,7 @@ describe('GET /api/answer', () => {
       query: 'रिपोर्ट कब देनी है?',
       language: 'hi',
       top_k: 3,
-      filters: { department: 'records' },
+      filters: { org_id: 'example', department: 'records' },
     });
   });
 
@@ -56,7 +56,7 @@ describe('GET /api/answer', () => {
       query: 'report',
       language: 'en',
       top_k: 2,
-      filters: { language: 'hi' },
+      filters: { language: 'hi', org_id: 'example' },
     });
   });
 

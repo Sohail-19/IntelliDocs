@@ -362,6 +362,7 @@ export interface components {
             /** Format: date */
             doc_date?: string;
             doc_type?: string;
+            org_id?: string;
         };
         /** Citation v1 */
         "citation.v1.schema": {
@@ -462,6 +463,15 @@ export interface components {
             obligation_type?: "duty" | "prohibition" | "reporting" | "payment" | "review" | "other";
             citations?: components["schemas"]["citation.v1.schema"][];
             confidence: number;
+            /** @description Evidence contributions on the confidence scale. The six contributions sum to confidence, within floating-point precision. Exact and fuzzy quote contributions are mutually exclusive. */
+            confidence_breakdown?: {
+                quote_exact: number;
+                quote_fuzzy: number;
+                owner_resolved: number;
+                deadline_resolved: number;
+                recognized_cue: number;
+                cross_chunk_agreement: number;
+            };
             /** @enum {string} */
             status: "extracted" | "verified" | "needs_review" | "rejected" | "open" | "in_progress" | "complete" | "cancelled";
             extractor_version?: string;

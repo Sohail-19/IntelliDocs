@@ -29,7 +29,15 @@
           "quote": "The supplier must submit the monthly report by the fifth business day after receipt."
         }
       ],
-      "confidence": 0.94,
+      "confidence": 0.30,
+      "confidence_breakdown": {
+        "quote_exact": 0.25,
+        "quote_fuzzy": 0,
+        "owner_resolved": 0,
+        "deadline_resolved": 0,
+        "recognized_cue": 0.05,
+        "cross_chunk_agreement": 0
+      },
       "status": "needs_review",
       "extractor_version": "example-v1"
     }

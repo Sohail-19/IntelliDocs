@@ -8,6 +8,7 @@ from test_api import validate_contract
 
 from app.chunking import Chunker, ChunkingConfig, canonical_document
 from app.extraction import DraftObligation, ObligationProcessor
+from app.extraction.confidence import ConfidenceWeights
 from app.ingestion import load_org
 from intellidocs_intelligence.models import (
     Chunk,
@@ -23,6 +24,8 @@ from intellidocs_intelligence.models import (
 @pytest.fixture
 def org(monkeypatch: pytest.MonkeyPatch) -> OrgConfig:
     monkeypatch.setenv("ORG_CONFIG_DIR", str(Path(__file__).resolve().parents[3] / "config/orgs"))
+    monkeypatch.delenv("EXTRACTION_CONFIDENCE_WEIGHTS", raising=False)
+    monkeypatch.delenv("EXTRACTION_FUZZY_THRESHOLD", raising=False)
     return load_org("example")
 
 
@@ -104,6 +107,19 @@ def test_exact_quote_verifies_offsets_alias_and_absolute_deadline(org: OrgConfig
     assert citation.page_start == citation.page_end == 1
     assert citation.clause_number == "1"
     assert canonical_document(document).text[citation.char_start : citation.char_end] == text
+    assert org.routing_policy is not None
+    assert obligation.confidence > org.routing_policy.min_confidence
+    breakdown = obligation.confidence_breakdown
+    assert breakdown is not None
+    assert breakdown.model_dump() == {
+        "quote_exact": 0.25,
+        "quote_fuzzy": 0,
+        "owner_resolved": 0.55,
+        "deadline_resolved": 0.1,
+        "recognized_cue": 0.05,
+        "cross_chunk_agreement": 0,
+    }
+    assert sum(breakdown.model_dump().values()) == pytest.approx(obligation.confidence)
     validate_contract(result.model_dump(mode="json"), "extraction-result.v1.schema.json")
 
 
@@ -120,10 +136,57 @@ def test_altered_quote_rejected_even_with_valid_owner_and_deadline(org: OrgConfi
     )
     rejected, accepted = result.obligations
     assert rejected.status == "rejected" and rejected.citations == []
+    assert rejected.confidence == 0
     assert isinstance(rejected.owner, ObligationOwner) and not rejected.owner.resolved
     assert isinstance(rejected.deadline, ObligationDeadline) and not rejected.deadline.resolved
     assert result.stats.rejected == result.stats.verified == 1
     assert accepted.status == "verified"
+
+
+def test_fuzzy_quote_earns_less_and_uses_the_canonical_source(
+    org: OrgConfig, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("EXTRACTION_FUZZY_THRESHOLD", "0.95")
+    text = "Finance Officer must file the report by 5 December 2026."
+    document, [chunk] = sources([text])
+    fuzzy_draft = draft(chunk, quote=text.replace("report", "reprot"))
+    processor = ObligationProcessor(org)
+    [fuzzy] = processor.process(document, [chunk], [fuzzy_draft]).obligations
+    [exact] = processor.process(document, [chunk], [draft(chunk)]).obligations
+    [both] = processor.process(document, [chunk], [fuzzy_draft, draft(chunk)]).obligations
+    assert fuzzy.status == exact.status == "verified"
+    assert fuzzy.citations and fuzzy.citations[0].quote == text
+    assert fuzzy.confidence < exact.confidence
+    assert fuzzy.confidence_breakdown is not None
+    assert fuzzy.confidence_breakdown.quote_exact == 0
+    assert fuzzy.confidence_breakdown.quote_fuzzy == 0.12
+    assert both.confidence_breakdown == exact.confidence_breakdown
+
+
+def test_cue_must_appear_in_the_quoted_span(org: OrgConfig) -> None:
+    quote = "Finance Officer files the report by 5 December 2026."
+    document, [chunk] = sources(["The board must review every draft. " + quote])
+    [obligation] = (
+        ObligationProcessor(org).process(document, [chunk], [draft(chunk, quote=quote)]).obligations
+    )
+    assert obligation.confidence_breakdown is not None
+    assert obligation.confidence_breakdown.quote_exact > 0
+    assert obligation.confidence_breakdown.recognized_cue == 0
+
+
+def test_weights_are_normalized_and_validate_exact_priority() -> None:
+    env = {"EXTRACTION_CONFIDENCE_WEIGHTS": '{"quote_exact": 0.5}'}
+    weights = ConfidenceWeights.from_env(env)
+    assert weights.contributions(
+        quote_exact=True,
+        quote_fuzzy=False,
+        owner_resolved=False,
+        deadline_resolved=False,
+        recognized_cue=False,
+        cross_chunk_agreement=False,
+    ).quote_exact == pytest.approx(0.4)
+    with pytest.raises(ValueError, match="higher weight"):
+        ConfidenceWeights.from_env({"EXTRACTION_CONFIDENCE_WEIGHTS": '{"quote_exact": 0}'})
 
 
 @pytest.mark.parametrize("anchor", [None, date(2026, 11, 15)])
@@ -194,9 +257,13 @@ def test_unknown_ambiguous_and_unsourced_owners_do_not_resolve(org: OrgConfig) -
         ],
     )
     assert result.stats.needs_review == 3
+    assert org.routing_policy is not None
     for obligation in result.obligations:
         assert isinstance(obligation.owner, ObligationOwner) and not obligation.owner.resolved
         assert obligation.citations and obligation.owner.resolved_department is None
+        assert obligation.confidence < org.routing_policy.min_confidence
+        assert obligation.confidence_breakdown is not None
+        assert obligation.confidence_breakdown.owner_resolved == 0
     assert isinstance(result.obligations[-1].deadline, ObligationDeadline)
     assert not result.obligations[-1].deadline.resolved
 
@@ -220,6 +287,22 @@ def test_dedup_merges_citations_for_equivalent_owner_and_date(org: OrgConfig) ->
         (1, chunks[0].text),
         (2, chunks[1].text),
     ]
+    assert obligation.confidence_breakdown is not None
+    assert obligation.confidence_breakdown.cross_chunk_agreement > 0
+    assert obligation.confidence == 1
+
+
+def test_repetition_over_the_same_source_span_does_not_raise_confidence(org: OrgConfig) -> None:
+    text = "Finance Officer must file the report by 5 December 2026."
+    document, [chunk] = sources([text])
+    overlap = chunk.model_copy(update={"chunk_id": "overlap"})
+    [obligation] = (
+        ObligationProcessor(org)
+        .process(document, [chunk, overlap], [draft(chunk), draft(overlap), draft(chunk)])
+        .obligations
+    )
+    assert obligation.confidence_breakdown is not None
+    assert obligation.confidence_breakdown.cross_chunk_agreement == 0
 
 
 @pytest.mark.parametrize(

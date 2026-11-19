@@ -1,6 +1,7 @@
 """Pydantic models mirroring the versioned schemas in /contracts."""
 
 from datetime import date, datetime
+from math import fsum, isclose
 from typing import Annotated, Literal, Self
 
 from pydantic import (
@@ -111,6 +112,7 @@ class Chunk(ContractModel):
     department: NonEmptyString | None = None
     doc_date: date | None = None
     doc_type: NonEmptyString | None = None
+    org_id: NonEmptyString | None = None
 
 
 class IndexRequest(ContractModel):
@@ -156,6 +158,37 @@ class ObligationDeadline(ContractModel):
         return UploadMetadata.explicit_date(value)
 
 
+ConfidenceContribution = Annotated[FiniteFloat, Field(ge=0, le=1, strict=True)]
+
+
+class ConfidenceBreakdown(ContractModel):
+    quote_exact: ConfidenceContribution
+    quote_fuzzy: ConfidenceContribution
+    owner_resolved: ConfidenceContribution
+    deadline_resolved: ConfidenceContribution
+    recognized_cue: ConfidenceContribution
+    cross_chunk_agreement: ConfidenceContribution
+
+    @property
+    def total(self) -> float:
+        return fsum(
+            (
+                self.quote_exact,
+                self.quote_fuzzy,
+                self.owner_resolved,
+                self.deadline_resolved,
+                self.recognized_cue,
+                self.cross_chunk_agreement,
+            )
+        )
+
+    @model_validator(mode="after")
+    def one_quote_match(self) -> Self:
+        if self.quote_exact and self.quote_fuzzy:
+            raise ValueError("Quote evidence cannot be both exact and fuzzy")
+        return self
+
+
 class Obligation(ContractModel):
     id: NonEmptyString
     action: NonEmptyString
@@ -163,6 +196,7 @@ class Obligation(ContractModel):
     deadline: ObligationDeadline | datetime
     source: Citation | None = None
     confidence: FiniteFloat = Field(ge=0, le=1)
+    confidence_breakdown: ConfidenceBreakdown | None = None
     status: Literal[
         "extracted",
         "verified",
@@ -181,6 +215,10 @@ class Obligation(ContractModel):
 
     @model_validator(mode="after")
     def compatible_shape(self) -> Self:
+        if self.confidence_breakdown is not None and not isclose(
+            self.confidence, self.confidence_breakdown.total, rel_tol=0, abs_tol=1e-12
+        ):
+            raise ValueError("Confidence must equal the sum of its evidence contributions")
         if self.status in {"open", "in_progress", "complete", "cancelled"}:
             if (
                 not isinstance(self.owner, str)
@@ -244,9 +282,38 @@ class SearchResult(ContractModel):
     citations: list[Citation] = Field(min_length=1)
 
 
-class RoutingRule(ContractModel):
+class LegacyRoutingRule(ContractModel):
     document_type: NonEmptyString
     department: NonEmptyString
+
+
+RoutingText = Annotated[str, Field(pattern=r"\S")]
+
+
+class RoutingConditions(ContractModel):
+    obligation_type: ObligationType | None = None
+    owner_department: RoutingText | None = None
+    document_type: RoutingText | None = None
+    keywords: list[RoutingText] | None = Field(default=None, min_length=1)
+    deadline_within_days: int | None = Field(default=None, ge=0, le=36500, strict=True)
+
+
+class RoutingTarget(ContractModel):
+    kind: Literal["user", "role_queue", "department_queue"]
+    value: RoutingText
+
+
+class RoutingRule(ContractModel):
+    id: str = Field(pattern=r"^[A-Za-z0-9_-]+$")
+    priority: int = Field(ge=0, le=2147483647, strict=True)
+    conditions: RoutingConditions
+    target: RoutingTarget
+    escalation_after_days: int | None = Field(default=None, ge=0, le=36500, strict=True)
+
+
+class RoutingPolicy(ContractModel):
+    min_confidence: FiniteFloat = Field(ge=0, le=1)
+    review_role: RoutingText
 
 
 class ObligationDetectionRules(ContractModel):
@@ -261,13 +328,21 @@ class OrgRole(ContractModel):
     aliases: list[NonEmptyString] = Field(default_factory=list)
 
 
+class OrgAccess(ContractModel):
+    bootstrap_role: NonEmptyString
+    registration_role: NonEmptyString
+    role_permissions: dict[str, list[NonEmptyString]]
+
+
 class OrgConfig(ContractModel):
+    access: OrgAccess | None = None
     upload_defaults: UploadMetadata | None = None
     languages: list[LanguageCode] = Field(min_length=1)
     ocr_engine: NonEmptyString
     document_types: list[NonEmptyString]
     departments: list[NonEmptyString]
-    routing_rules: list[RoutingRule]
+    routing_policy: RoutingPolicy | None = None
+    routing_rules: list[RoutingRule | LegacyRoutingRule]
     obligation_detection: dict[str, ObligationDetectionRules] = Field(default_factory=dict)
     department_aliases: dict[str, list[NonEmptyString]] = Field(default_factory=dict)
     roles: dict[str, OrgRole] = Field(default_factory=dict)

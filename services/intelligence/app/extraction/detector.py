@@ -41,10 +41,11 @@ class _LanguageRules:
     cues: tuple[str, ...]
     date_patterns: tuple[re.Pattern[str], ...]
 
+    def has_cue(self, text: str) -> bool:
+        return any(contains_phrase(text, cue) for cue in self.cues)
+
     def matches(self, text: str) -> bool:
-        return any(contains_phrase(text, cue) for cue in self.cues) or any(
-            pattern.search(text) for pattern in self.date_patterns
-        )
+        return self.has_cue(text) or any(pattern.search(text) for pattern in self.date_patterns)
 
 
 class CandidateDetector:
@@ -75,6 +76,10 @@ class CandidateDetector:
             return self.rules.values()
         rule = self.rules.get(key)
         return () if rule is None else (rule,)
+
+    def has_cue(self, text: str, language: str | None) -> bool:
+        normalized = _normalize(text)
+        return any(rule.has_cue(normalized) for rule in self._rules_for(language))
 
     def detect(self, chunks: Iterable[Chunk]) -> Iterator[CandidateChunk]:
         for chunk in chunks:
