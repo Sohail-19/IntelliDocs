@@ -1,13 +1,14 @@
 import { json, Router } from 'express';
 import type { Request, RequestHandler, Response } from 'express';
 import { rateLimit } from 'express-rate-limit';
+import type { UserChange } from '../../../../contracts/core-api.v1.js';
 
 import { auditContext, auditRequest } from '../audit.js';
 import type { Permission, Principal } from './policy.js';
 import { AuthError } from './service.js';
 import type { AuthService, Credentials, Registration } from './service.js';
 
-export type Guard = (permission: Permission) => RequestHandler;
+export type Guard = (...permissions: Permission[]) => RequestHandler;
 
 export function principal(response: Response): Principal {
   const user = response.locals.principal as Principal | undefined;
@@ -35,8 +36,10 @@ export function requireRole(auth: AuthService, ...roles: string[]): RequestHandl
   return authorized(auth, (user) => roles.some((role) => user.roles.includes(role)));
 }
 
-export function requirePermission(auth: AuthService, permission: Permission): RequestHandler {
-  return authorized(auth, (user) => auth.allows(user, permission));
+export function requirePermission(auth: AuthService, ...permissions: Permission[]): RequestHandler {
+  return authorized(auth, (user) =>
+    permissions.some((permission) => auth.allows(user, permission)),
+  );
 }
 
 function sendError(response: Response, error: AuthError): void {
@@ -50,6 +53,14 @@ function bodyOf(request: Request): Record<string, unknown> {
     throw new AuthError(422, 'Expected a JSON object');
   }
   return body as Record<string, unknown>;
+}
+
+function refreshToken(request: Request): string {
+  const token = bodyOf(request).refresh_token;
+  if (typeof token !== 'string' || !/^[A-Za-z0-9_-]{43}$/.test(token)) {
+    throw new AuthError(401, 'Invalid refresh token');
+  }
+  return token;
 }
 
 function credentials(body: Record<string, unknown>, registering = false): Credentials {
@@ -98,24 +109,61 @@ function handle(run: (request: Request, response: Response) => Promise<void>): R
     });
   };
 }
-export function userRoleRouter(auth: AuthService, guard: Guard): Router {
+function userId(request: Request): number {
+  const value = request.params.id;
+  const id = typeof value === 'string' && /^\d+$/.test(value) ? Number(value) : 0;
+  if (!Number.isSafeInteger(id) || id <= 0 || id > 2147483647) {
+    throw new AuthError(422, 'Invalid user ID');
+  }
+  return id;
+}
+
+export function userRouter(auth: AuthService, guard: Guard): Router {
   const router = Router();
+  const manage = guard('users:roles');
+  router.use('/api/users', manage, (_request, response, next) => {
+    response.set('Cache-Control', 'no-store');
+    next();
+  });
+  router.get(
+    '/api/users',
+    handle(async (_request, response) => {
+      response.json(await auth.listUsers(principal(response)));
+    }),
+  );
+  router.patch(
+    '/api/users/:id',
+    handle(async (request, response) => {
+      const id = userId(request);
+      const body = bodyOf(request);
+      const { department, active } = body;
+      let change: UserChange;
+      if (
+        Object.keys(body).length === 1 &&
+        (department === null || typeof department === 'string')
+      ) {
+        change = { department };
+      } else if (Object.keys(body).length === 1 && active === false) {
+        change = { active };
+      } else {
+        throw new AuthError(422, 'Provide a department or deactivate the user');
+      }
+      const actor = principal(response);
+      const user = await auth.changeUser(id, change, actor, auditContext(request, response, actor));
+      response.json({ user });
+    }),
+  );
   router.put(
     '/api/users/:id/roles',
-    guard('users:roles'),
     handle(async (request, response) => {
-      const value = request.params.id;
-      const id = typeof value === 'string' && /^\d+$/.test(value) ? Number(value) : 0;
+      const id = userId(request);
       const { roles } = bodyOf(request);
       if (
-        !Number.isSafeInteger(id) ||
-        id <= 0 ||
-        id > 2147483647 ||
         !Array.isArray(roles) ||
         roles.length > 32 ||
         roles.some((role) => typeof role !== 'string')
       ) {
-        throw new AuthError(422, 'Invalid user ID or role list');
+        throw new AuthError(422, 'Invalid role list');
       }
       const actor = principal(response);
       await auth.replaceRoles(id, roles as string[], actor, auditContext(request, response, actor));
@@ -167,11 +215,21 @@ export function authRouter(auth: AuthService): Router {
   router.post(
     '/refresh',
     handle(async (request, response) => {
-      const token = bodyOf(request).refresh_token;
-      if (typeof token !== 'string' || !/^[A-Za-z0-9_-]{43}$/.test(token)) {
-        throw new AuthError(401, 'Invalid refresh token');
-      }
-      response.json(await auth.refresh(token, auditRequest(request, response)));
+      response.json(await auth.refresh(refreshToken(request), auditRequest(request, response)));
+    }),
+  );
+  router.get(
+    '/me',
+    authorized(auth, () => true),
+    (_request, response) => {
+      response.json(auth.profile(principal(response)));
+    },
+  );
+  router.post(
+    '/logout',
+    handle(async (request, response) => {
+      await auth.logout(refreshToken(request), auditRequest(request, response));
+      response.sendStatus(204);
     }),
   );
   return router;

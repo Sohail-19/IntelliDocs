@@ -21,6 +21,12 @@ export interface UploadDependencies {
   maxBytes?: number;
 }
 
+export function uploadLimit(maxBytes = Number(process.env.MAX_UPLOAD_BYTES ?? 20971520)) {
+  if (!Number.isSafeInteger(maxBytes + 1) || maxBytes <= 0)
+    throw new Error('Invalid MAX_UPLOAD_BYTES');
+  return maxBytes;
+}
+
 export function uploadRouter(
   dependencies: UploadDependencies,
   guard: Guard,
@@ -28,12 +34,11 @@ export function uploadRouter(
   ownsDocument?: (docId: string, orgId: number) => Promise<boolean>,
 ): Router {
   const router = Router();
-  const maxBytes = dependencies.maxBytes ?? Number(process.env.MAX_UPLOAD_BYTES ?? 20971520);
-  if (!Number.isSafeInteger(maxBytes) || maxBytes <= 0) throw new Error('Invalid MAX_UPLOAD_BYTES');
+  const maxBytes = uploadLimit(dependencies.maxBytes);
   const upload = multer({
     storage: multer.memoryStorage(),
     limits: {
-      fileSize: maxBytes,
+      fileSize: maxBytes + 1,
       files: 1,
       fields: 4,
       fieldSize: 256,
@@ -76,11 +81,10 @@ export function uploadRouter(
   router.post('/v1/upload', guard('documents:upload'), (req, res, next) => {
     upload.single('file')(req, res, (error: unknown) => {
       if (error) {
-        res
-          .status(
-            error instanceof multer.MulterError && error.code === 'LIMIT_FILE_SIZE' ? 413 : 400,
-          )
-          .json({ error: 'Upload rejected' });
+        const tooLarge = error instanceof multer.MulterError && error.code === 'LIMIT_FILE_SIZE';
+        res.status(tooLarge ? 413 : 400).json({
+          error: tooLarge ? 'File exceeds the upload size limit' : 'Upload rejected',
+        });
         return;
       }
       if (!req.file) {
@@ -131,13 +135,13 @@ export function uploadRouter(
         const indexResults: IndexResult[] = [];
         const extractionResults: ExtractionResult[] = [];
         const extractionFailures: string[] = [];
-        let failed = false;
+        const indexFailures: string[] = [];
         const documents: ParseResult[] = [result.parse_result];
         for (const parsed of documents) {
           documents.push(...(parsed.attachments ?? []));
           const indexed = await indexDocument(parsed.document.id, audit);
           if (!indexed) {
-            failed = true;
+            indexFailures.push(parsed.document.id);
             continue;
           }
           indexResults.push(indexed);
@@ -149,7 +153,7 @@ export function uploadRouter(
             }
           }
         }
-        res.status(failed || extractionFailures.length ? 502 : 202).json({
+        res.status(indexFailures.length || extractionFailures.length ? 502 : 202).json({
           ...result,
           index_results: indexResults,
           ...(extract ? { extraction_results: extractionResults } : {}),
@@ -159,15 +163,24 @@ export function uploadRouter(
                 extraction_failed_document_ids: extractionFailures,
               }
             : {}),
-          ...(failed
-            ? { index_error: 'Some documents failed indexing; parsed documents remain stored.' }
+          ...(indexFailures.length
+            ? {
+                index_error: 'Some documents failed indexing; parsed documents remain stored.',
+                index_failed_document_ids: indexFailures,
+              }
             : {}),
         });
       })().catch((failure: unknown) => {
         if (failure instanceof IntelligenceError) {
+          const message =
+            failure.status === 415
+              ? 'The file type or contents are not supported'
+              : failure.status === 413
+                ? 'The file or its decoded attachments exceed the upload size limit'
+                : 'The document could not be parsed';
           res
             .status(failure.status >= 400 && failure.status < 500 ? failure.status : 502)
-            .json({ error: 'Intelligence ingestion failed' });
+            .json({ error: message });
         } else next(failure);
       });
     });

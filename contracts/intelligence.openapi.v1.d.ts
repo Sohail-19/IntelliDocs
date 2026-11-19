@@ -85,6 +85,60 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/documents/{doc_id}/source": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description Return the original PDF for a stored document in the specified organization. */
+        get: {
+            parameters: {
+                query: {
+                    org_id: string;
+                };
+                header?: never;
+                path: {
+                    doc_id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Original PDF bytes */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/pdf": string;
+                    };
+                };
+                /** @description Source not found in the organization */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description The source is not a PDF */
+                415: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/index": {
         parameters: {
             query?: never;
@@ -375,6 +429,12 @@ export interface components {
             quote: string;
             clause_number?: string;
             heading_path?: string[];
+            /** @description Optional PDF layout for blocks intersecting the cited span. Coordinates are page-local points in displayed orientation, with origin at the top left. */
+            boxes?: {
+                page: number;
+                /** @description [x0, y0, x1, y1] in page points. */
+                bbox: number[];
+            }[];
         };
         /** SearchResult v1 */
         "search-result.v1.schema": {

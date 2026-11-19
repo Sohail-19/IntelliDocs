@@ -1,0 +1,8 @@
+{
+  "filename": "demo-obligation.pdf",
+  "quote": "Finance Department must submit the reconciliation ledger by 2099-12-31.",
+  "action": "Submit the reconciliation ledger",
+  "owner_text": "Finance Department",
+  "deadline_text": "2099-12-31",
+  "obligation_type": "reporting"
+}

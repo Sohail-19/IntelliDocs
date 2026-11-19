@@ -73,6 +73,16 @@ function handle(run: (request: Request, response: Response) => Promise<void>): R
 export function reviewRouter(repository: ObligationReviewRepository, guard: Guard): Router {
   const router = Router();
   router.get(
+    '/api/obligations/review/options',
+    guard('obligations:review'),
+    handle((_request, response) => {
+      const options = repository.options(principal(response).orgSlug);
+      if (!options) throw new ReviewError(404, 'Organization review options are unavailable');
+      response.json(options);
+      return Promise.resolve();
+    }),
+  );
+  router.get(
     '/api/obligations/review',
     guard('obligations:review'),
     handle(async (request, response) => {

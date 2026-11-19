@@ -1,0 +1,9 @@
+{
+  ".pdf": { "mime_type": "application/pdf", "signature": "255044462d" },
+  ".png": { "mime_type": "image/png", "signature": "89504e470d0a1a0a" },
+  ".jpg": { "mime_type": "image/jpeg", "signature": "ffd8ff" },
+  ".jpeg": { "mime_type": "image/jpeg", "signature": "ffd8ff" },
+  ".docx": { "mime_type": "application/vnd.openxmlformats-officedocument.wordprocessingml.document", "signature": "504b" },
+  ".eml": { "mime_type": "message/rfc822", "signature": "" },
+  ".msg": { "mime_type": "application/vnd.ms-outlook", "signature": "d0cf11e0a1b11ae1" }
+}

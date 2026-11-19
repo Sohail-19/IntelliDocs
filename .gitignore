@@ -30,6 +30,8 @@ yarn-error.log*
 data/*
 !data/README.md
 eval/results/
+e2e/test-results/
+e2e/playwright-report/
 
 # Model and ML caches
 .cache/

@@ -15,6 +15,7 @@ import { up as assignments } from '../migrations/1700000000006_routing_assignmen
 import { up as workflow } from '../migrations/1700000000007_task_workflow.js';
 import { up as review } from '../migrations/1700000000008_obligation_review.js';
 import { up as confidenceMigration } from '../migrations/1700000000009_obligation_confidence.js';
+import { up as documentMetadata } from '../migrations/1700000000010_document_metadata.js';
 import type { AuditContext } from '../src/audit.js';
 import { loadOrgConfig } from '../src/config/loader.js';
 import { PostgresDocumentRepository } from '../src/documents.js';
@@ -158,6 +159,7 @@ it('routes stored obligations, closes old assignments, and keeps history through
       workflow,
       review,
       confidenceMigration,
+      documentMetadata,
     ])
       await apply(migrate);
     await db.exec(`

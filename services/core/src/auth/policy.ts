@@ -1,19 +1,7 @@
+import type { Permission } from '../../../../contracts/core-api.v1.js';
 import type { OrgConfig } from '../config/loader.js';
 
-export type Permission =
-  | 'users:register'
-  | 'users:roles'
-  | 'audit:read'
-  | 'documents:upload'
-  | 'documents:search'
-  | 'documents:answer'
-  | 'obligations:read'
-  | 'obligations:extract'
-  | 'obligations:status'
-  | 'obligations:assign'
-  | 'obligations:review'
-  | 'tasks:read'
-  | 'tasks:transition';
+export type { Permission } from '../../../../contracts/core-api.v1.js';
 
 export interface OrgPolicy {
   slug: string;

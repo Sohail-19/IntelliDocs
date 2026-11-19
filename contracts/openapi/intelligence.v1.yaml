@@ -23,6 +23,20 @@
         }
       }
     },
+    "/v1/documents/{doc_id}/source": {
+      "get": {
+        "description": "Return the original PDF for a stored document in the specified organization.",
+        "parameters": [
+          { "name": "doc_id", "in": "path", "required": true, "schema": { "type": "string", "format": "uuid" } },
+          { "name": "org_id", "in": "query", "required": true, "schema": { "type": "string", "pattern": "^[A-Za-z0-9_-]+$" } }
+        ],
+        "responses": {
+          "200": { "description": "Original PDF bytes", "content": { "application/pdf": { "schema": { "type": "string", "format": "binary" } } } },
+          "404": { "description": "Source not found in the organization" },
+          "415": { "description": "The source is not a PDF" }
+        }
+      }
+    },
     "/v1/index": {
       "post": {
         "description": "Index a stored parsed document, reusing cached embeddings when content and embedding configuration match.",

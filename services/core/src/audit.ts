@@ -3,6 +3,7 @@ import { isIP } from 'node:net';
 
 import type { Request, RequestHandler, Response } from 'express';
 import type { Pool, PoolClient } from 'pg';
+import type { AuditEntry as AuditEntryWire } from '../../../contracts/core-api.v1.js';
 
 export interface AuditRequest {
   requestId: string;
@@ -23,6 +24,7 @@ export interface AuditEvent {
 }
 
 export interface AuditFilters {
+  action?: string;
   entityType?: string;
   entityId?: string;
   actorUserId?: number | 'system';
@@ -32,18 +34,7 @@ export interface AuditFilters {
   limit: number;
 }
 
-export interface AuditEntry {
-  id: number;
-  timestamp: Date;
-  actor_user_id: number | null;
-  action: string;
-  entity_type: string;
-  entity_id: string;
-  before: object | null;
-  after: object | null;
-  request_id: string;
-  ip: string | null;
-}
+export type AuditEntry = Omit<AuditEntryWire, 'timestamp'> & { timestamp: Date };
 
 export interface AuditReader {
   list(
@@ -126,6 +117,7 @@ export class PostgresAuditReader implements AuditReader {
     const values: (number | string | Date)[] = [orgId];
     if (filters.actorUserId === 'system') clauses.push('actor_user_id IS NULL');
     for (const [value, predicate] of [
+      [filters.action, 'action ='],
       [filters.entityType, 'entity_type ='],
       [filters.entityId, 'entity_id ='],
       [filters.actorUserId === 'system' ? undefined : filters.actorUserId, 'actor_user_id ='],

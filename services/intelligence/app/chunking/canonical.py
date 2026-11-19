@@ -1,8 +1,10 @@
 """Canonical text v1: raw block text and row-major tables joined by two newlines."""
 
+from collections.abc import Sequence
 from dataclasses import dataclass
+from math import isfinite
 
-from intellidocs_intelligence.models import ParsedDocument, TableBlock, TextBlock
+from intellidocs_intelligence.models import CitationBox, ParsedDocument, TableBlock, TextBlock
 
 
 @dataclass(frozen=True)
@@ -19,6 +21,29 @@ class BlockSpan:
 class CanonicalDocument:
     text: str
     blocks: tuple[BlockSpan, ...]
+    has_pdf_layout: bool = False
+
+    def overlapping_blocks(self, start: int, end: int) -> list[BlockSpan]:
+        return [
+            span
+            for span in self.blocks
+            if span.start < end and span.end > start and span.start < span.end
+        ]
+
+    def citation_boxes(self, spans: Sequence[BlockSpan]) -> list[CitationBox] | None:
+        if not self.has_pdf_layout:
+            return None
+        boxes = []
+        for span in spans:
+            x0, y0, x1, y1 = span.block.bbox
+            if (
+                span.block.type != "header_footer"
+                and all(isfinite(value) for value in span.block.bbox)
+                and 0 <= x0 < x1
+                and 0 <= y0 < y1
+            ):
+                boxes.append(CitationBox(page=span.page, bbox=span.block.bbox))
+        return boxes or None
 
 
 def canonical_document(document: ParsedDocument) -> CanonicalDocument:
@@ -57,4 +82,4 @@ def canonical_document(document: ParsedDocument) -> CanonicalDocument:
                     block,
                 )
             )
-    return CanonicalDocument("".join(parts), tuple(spans))
+    return CanonicalDocument("".join(parts), tuple(spans), document.mime_type == "application/pdf")

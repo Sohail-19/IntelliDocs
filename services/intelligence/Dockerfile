@@ -26,6 +26,7 @@ RUN set -eu; packages=""; \
 RUN groupadd --system app && useradd --system --gid app --create-home app
 RUN mkdir -p /data/uploads && chown app:app /data/uploads
 COPY config /config
+COPY contracts/document-upload-formats.v1.json /contracts/
 COPY --from=builder /opt/venv /opt/venv
 ENV PATH="/opt/venv/bin:${PATH}" \
     PYTHONDONTWRITEBYTECODE=1 \

@@ -2,6 +2,7 @@ import { Router } from 'express';
 
 import { auditContext } from '../audit.js';
 import { principal } from '../auth/routes.js';
+import type { Principal } from '../auth/policy.js';
 import type { Guard } from '../auth/routes.js';
 import { isCalendarDate } from '../obligation-values.js';
 import type { TaskFilters, TaskRepository } from './repository.js';
@@ -38,7 +39,11 @@ function parseFilters(query: Record<string, unknown>): TaskFilters | undefined {
   return filters;
 }
 
-export function taskRouter(repository: TaskRepository, guard: Guard): Router {
+export function taskRouter(
+  repository: TaskRepository,
+  guard: Guard,
+  canTransition: (actor: Principal) => boolean = () => false,
+): Router {
   const router = Router();
   router.get('/api/tasks', guard('tasks:read'), (request, response, next) => {
     const filters = parseFilters(request.query);
@@ -47,10 +52,11 @@ export function taskRouter(repository: TaskRepository, guard: Guard): Router {
       return;
     }
     response.set('Cache-Control', 'no-store');
+    const actor = principal(response);
     void repository
-      .list(principal(response), filters)
-      .then((tasks) => {
-        response.json({ tasks });
+      .feed(actor, filters, canTransition(actor))
+      .then((feed) => {
+        response.json(feed);
       })
       .catch(next);
   });

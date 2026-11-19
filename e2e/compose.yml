@@ -1,0 +1,30 @@
+services:
+  core:
+    ports: !override
+      - "127.0.0.1:${CORE_PORT}:${CORE_PORT}"
+  intelligence:
+    environment:
+      EMBEDDING_BACKEND: fake
+      RETRIEVAL_MODE: hybrid
+      RERANKER_BACKEND: none
+      LLM_PROVIDER: openai_compatible
+      LLM_MODEL: demo-mock
+      LLM_API_KEY: fixture-api-key
+      LLM_BASE_URL: http://mock-llm:8080/v1
+      VERIFICATION_SUPPORT_CHECK: "false"
+    depends_on:
+      mock-llm:
+        condition: service_healthy
+      qdrant:
+        condition: service_healthy
+  mock-llm:
+    image: python:3.11-slim
+    working_dir: /fixtures
+    command: ["python", "mock_llm.py"]
+    volumes:
+      - ./e2e:/fixtures:ro
+    healthcheck:
+      test: ["CMD", "python", "-c", "from urllib.request import urlopen; urlopen('http://127.0.0.1:8080/health')"]
+      interval: 2s
+      timeout: 2s
+      retries: 15

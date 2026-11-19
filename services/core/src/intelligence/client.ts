@@ -1,4 +1,4 @@
-import type { components } from './openapi.generated.js';
+import type { components, paths } from '../../../../contracts/intelligence.openapi.v1.js';
 
 type Schemas = components['schemas'];
 export type Chunk = Schemas['chunk.v1.schema'];
@@ -83,6 +83,21 @@ export class IntelligenceClient {
 
   index(request: IndexRequest): Promise<IndexResult> {
     return this.post('/v1/index', request);
+  }
+
+  async pdfSource(id: string, org: string): Promise<Response> {
+    type SourceParameters = paths['/v1/documents/{doc_id}/source']['get']['parameters'];
+    const path: SourceParameters['path'] = { doc_id: id };
+    const query: SourceParameters['query'] = { org_id: org };
+    const response = await this.fetchImplementation(
+      this.baseUrl +
+        '/v1/documents/' +
+        encodeURIComponent(path.doc_id) +
+        '/source?' +
+        new URLSearchParams(query).toString(),
+    );
+    this.assertSuccess(response);
+    return response;
   }
 
   search(request: SearchRequest): Promise<SearchResponse> {

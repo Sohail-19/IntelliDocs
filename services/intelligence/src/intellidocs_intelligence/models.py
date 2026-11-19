@@ -126,6 +126,18 @@ class IndexResult(ContractModel):
     warnings: list[str]
 
 
+class CitationBox(ContractModel):
+    page: int = Field(ge=1)
+    bbox: list[Annotated[FiniteFloat, Field(ge=0)]] = Field(min_length=4, max_length=4)
+
+    @model_validator(mode="after")
+    def has_positive_area(self) -> Self:
+        x0, y0, x1, y1 = self.bbox
+        if x0 >= x1 or y0 >= y1:
+            raise ValueError("Citation box must have positive area")
+        return self
+
+
 class Citation(ContractModel):
     doc_id: NonEmptyString
     page: int = Field(ge=1)
@@ -136,6 +148,7 @@ class Citation(ContractModel):
     page_end: int | None = Field(default=None, ge=1)
     clause_number: NonEmptyString | None = None
     heading_path: list[NonEmptyString] | None = None
+    boxes: list[CitationBox] | None = None
 
 
 class ObligationOwner(ContractModel):

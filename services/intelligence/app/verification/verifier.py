@@ -45,13 +45,14 @@ def _citation(
         return None
     begin, end = match
     start, finish = chunk.char_start + begin, chunk.char_start + end
+    sources = []
     if document is None:
         if first != last:
             return None  # Chunk bounds alone cannot locate a quote's exact page.
     else:
         if document.text[chunk.char_start : chunk.char_end] != chunk.text:
             return None
-        sources = [span for span in document.blocks if span.start < finish and span.end > start]
+        sources = document.overlapping_blocks(start, finish)
         if not sources or any(span.block.type == "header_footer" for span in sources):
             return None
         if not first <= sources[0].page <= sources[-1].page <= last:
@@ -67,6 +68,7 @@ def _citation(
         quote=chunk.text[begin:end],
         clause_number=chunk.clause_number,
         heading_path=chunk.heading_path or [],
+        boxes=document.citation_boxes(sources) if document is not None else None,
     )
 
 

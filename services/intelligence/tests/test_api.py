@@ -55,6 +55,20 @@ def test_index_requires_document_id() -> None:
     assert client.post("/v1/index", json={"doc_id": ""}).status_code == 422
 
 
+def test_original_pdf_requires_the_stored_organization() -> None:
+    data = (Path(__file__).parent / "fixtures/digital.pdf").read_bytes()
+    upload = client.post(
+        "/v1/ingest", files={"file": ("example.pdf", data)}, data={"org_id": "example"}
+    )
+    assert upload.status_code == 202
+    route = f"/v1/documents/{upload.json()['document_id']}/source"
+    downloaded = client.get(route, params={"org_id": "example"})
+    assert downloaded.status_code == 200
+    assert downloaded.headers["content-type"] == "application/pdf"
+    assert downloaded.content == data
+    assert client.get(route, params={"org_id": "another"}).status_code == 404
+
+
 def test_ingest_without_org_id() -> None:
     response = client.post(
         "/v1/ingest",

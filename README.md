@@ -29,6 +29,11 @@ curl http://localhost:3000/health
 
 Stop the stack with `docker compose down`.
 
+Open the [web app](http://localhost:5173) to sign in to the workspace. The
+web build uses `VITE_API_URL`, and core's `CORE_CORS_ORIGINS` must include
+the web origin. See the [web README](apps/web/README.md) for local Vite
+development.
+
 Register the first administrator and log in through core to get an access
 token. See [core authentication](services/core/README.md#authentication).
 Supply the token when uploading:
@@ -64,10 +69,20 @@ covered in the [core service README](services/core/README.md).
 | `POST /api/auth/register` | Bootstrap token for the first account, then `users:register` |
 | `POST /api/auth/login` | Organization, email, and password |
 | `POST /api/auth/refresh` | Current refresh token |
+| `GET /api/auth/me` | Valid access token |
+| `POST /api/auth/logout` | Current refresh token |
+| `GET /api/users` | `users:roles` |
+| `PATCH /api/users/:id` | `users:roles` |
 | `PUT /api/users/:id/roles` | `users:roles` |
+| `GET /api/organisation` | `org:read` |
 | `POST /v1/upload` | `documents:upload` |
+| `GET /api/documents` | `documents:upload` |
+| `GET /api/documents/upload-options` | `documents:upload` |
+| `GET /api/documents/:id` | `documents:upload` |
 | `POST /api/documents/:id/index` | `documents:upload` |
 | `GET /api/search` | `documents:search` |
+| `GET /api/search/options` | `documents:search` or `documents:answer` |
+| `GET /api/documents/:id/source` | Search or answer permission, visible task, or pending review access |
 | `GET /api/answer` | `documents:answer` |
 | `GET /api/obligations` | `obligations:read` |
 | `GET /api/documents/:id/obligations` | `obligations:read` |
@@ -76,6 +91,7 @@ covered in the [core service README](services/core/README.md).
 | `PATCH /api/documents/:id/obligations/:obligation_id/assignment` | `obligations:assign` |
 | `POST /api/documents/:id/obligations/:obligation_id/route` | `obligations:assign` |
 | `GET /api/obligations/review` | `obligations:review` |
+| `GET /api/obligations/review/options` | `obligations:review` |
 | `PATCH /api/documents/:id/obligations/:obligation_id/review` | `obligations:review` |
 | `POST /api/documents/:id/obligations/:obligation_id/review/approve` | `obligations:review` |
 | `POST /api/documents/:id/obligations/:obligation_id/review/reject` | `obligations:review` |
@@ -92,7 +108,7 @@ grants in the bundled example org.
 | --- | --- |
 | `documents:search`, `documents:answer`, `obligations:read`, `tasks:read` | `admin`, `manager`, `officer`, `finance_officer`, `viewer` |
 | `documents:upload`, `tasks:transition` | `admin`, `manager`, `officer`, `finance_officer` |
-| `audit:read`, `obligations:extract`, `obligations:status`, `obligations:assign`, `obligations:review` | `admin`, `manager` |
+| `audit:read`, `org:read`, `obligations:extract`, `obligations:status`, `obligations:assign`, `obligations:review` | `admin`, `manager` |
 | `users:register`, `users:roles` | `admin` |
 
 ## Intelligence API
@@ -102,12 +118,48 @@ grants in the bundled example org.
 | `GET /health` | Check service health |
 | `POST /v1/ingest` | Parse an uploaded file and optionally index it |
 | `POST /v1/index` | Index an already parsed document |
+| `GET /v1/documents/{doc_id}/source` | Return the original PDF for the given organization |
 | `POST /v1/search` | Retrieve cited document chunks |
 | `POST /v1/answer` | Generate and verify a grounded answer |
 | `POST /v1/extract-obligations` | Extract, verify, and resolve obligations |
 
 The [intelligence OpenAPI contract](contracts/openapi/intelligence.v1.yaml)
 defines requests and responses.
+
+## Run the browser demo
+
+Use Node 20.19 or later, Docker with Compose v2.24.4 or later, and OpenSSL.
+From the repository root, run:
+
+```sh
+npm ci --prefix services/core
+npm ci --prefix e2e
+(cd e2e && npx playwright install --only-shell chromium)
+bash e2e/run-compose.sh
+```
+
+On Linux, add `--with-deps` to the Chromium install command if system
+dependencies are missing. The script creates its own Compose project and
+database, applies migrations, and supplies an in-network mock LLM plus fake
+embeddings. It registers a temporary admin, uploads a synthetic PDF, verifies
+the highlighted citation in Search, completes the routed task, and checks the
+audit trail. It removes its containers and volumes on exit. The separate
+**Docker demo** workflow runs the same check and saves screenshots on failure.
+
+The demo uses loopback ports 55173 (web), 53000 (core), 58000 (intelligence),
+55432 (Postgres), and 56333 (Qdrant). Set the corresponding `DEMO_WEB_PORT`,
+`DEMO_CORE_PORT`, `DEMO_INTELLIGENCE_PORT`, `DEMO_POSTGRES_PORT`, or
+`DEMO_QDRANT_PORT` if a port is in use.
+
+## Screenshot placeholders
+
+| Screen | Planned screenshot |
+| --- | --- |
+| Search | Original PDF with a highlighted citation |
+| Task feed | A routed obligation and its available status actions |
+| Audit trail | Filtered task transition with before and after values |
+| Users and roles | Configured department and role controls |
+| Organisation | Loaded languages and routing rules |
 
 ## Run checks locally
 

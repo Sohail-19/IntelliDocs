@@ -3,30 +3,40 @@ import helmet from 'helmet';
 import { auditRouter } from './audit-routes.js';
 import { assignRequestId } from './audit.js';
 import type { AuditReader } from './audit.js';
-import { authRouter, requirePermission, userRoleRouter } from './auth/routes.js';
+import { authRouter, requirePermission, userRouter } from './auth/routes.js';
 import type { Guard } from './auth/routes.js';
 import type { AuthService } from './auth/service.js';
 import { answerRouter } from './answer.js';
+import { configuredCors } from './cors.js';
+import type { OrgConfig } from './config/loader.js';
+import { documentRouter } from './document-routes.js';
+import type { DocumentBrowser } from './document-routes.js';
 import type { IntelligenceClient } from './intelligence/client.js';
 import { obligationRouter, runExtraction } from './obligation-routes.js';
+import { organisationRouter } from './organisation.js';
 import type { ObligationRepository } from './obligations.js';
 import type { ObligationReviewRepository } from './review/repository.js';
 import { reviewRouter } from './review/routes.js';
 import { routingRouter } from './routing/routes.js';
 import type { PostgresRoutingService } from './routing/service.js';
 import { searchRouter } from './search.js';
+import { sourceRouter } from './source-routes.js';
 import type { TaskRepository } from './tasks/repository.js';
 import { taskRouter } from './tasks/routes.js';
-import { uploadRouter } from './upload.js';
+import { uploadLimit, uploadRouter } from './upload.js';
 import type { UploadDependencies } from './upload.js';
 
 type AppDependencies = UploadDependencies & {
-  intelligence: Partial<Pick<IntelligenceClient, 'search' | 'answer' | 'extractObligations'>>;
+  intelligence: Partial<
+    Pick<IntelligenceClient, 'search' | 'answer' | 'extractObligations' | 'pdfSource'>
+  >;
   obligations?: ObligationRepository;
   audit?: AuditReader;
+  orgConfigs?: ReadonlyMap<string, OrgConfig>;
   routing?: PostgresRoutingService;
   tasks?: TaskRepository;
   reviews?: ObligationReviewRepository;
+  documentBrowser?: DocumentBrowser;
 };
 
 export function createApp(
@@ -36,6 +46,7 @@ export function createApp(
   const app = express();
   app.use(assignRequestId);
   app.use(helmet());
+  app.use(configuredCors());
   const { auth } = security;
   if (auth) app.use('/api/auth', authRouter(auth));
   app.use(express.json());
@@ -44,17 +55,55 @@ export function createApp(
     response.status(200).json({ status: 'ok' });
   });
   const guard: Guard = auth
-    ? (permission) => requirePermission(auth, permission)
+    ? (...permissions) => requirePermission(auth, ...permissions)
     : (security.guard ??
       (() => (_request, response) => {
         response.sendStatus(401);
       }));
-  if (auth) app.use(userRoleRouter(auth, guard));
+  if (auth) app.use(userRouter(auth, guard));
   if (dependencies) {
     if (dependencies.audit) app.use(auditRouter(dependencies.audit, guard));
+    if (dependencies.orgConfigs) app.use(organisationRouter(dependencies.orgConfigs, guard));
     if (dependencies.routing) app.use(routingRouter(dependencies.routing, guard));
-    if (dependencies.tasks) app.use(taskRouter(dependencies.tasks, guard));
+    if (dependencies.tasks)
+      app.use(
+        taskRouter(
+          dependencies.tasks,
+          guard,
+          auth ? (actor) => auth.allows(actor, 'tasks:transition') : undefined,
+        ),
+      );
     if (dependencies.reviews) app.use(reviewRouter(dependencies.reviews, guard));
+    if (dependencies.documentBrowser) {
+      app.use(
+        documentRouter(dependencies.documentBrowser, guard, uploadLimit(dependencies.maxBytes)),
+      );
+      app.use(
+        sourceRouter(
+          dependencies.documentBrowser,
+          guard,
+          dependencies.intelligence.pdfSource?.bind(dependencies.intelligence),
+          auth
+            ? async (actor, id) => {
+                if (
+                  auth.allows(actor, 'documents:search') ||
+                  auth.allows(actor, 'documents:answer')
+                )
+                  return true;
+                if (
+                  auth.allows(actor, 'tasks:read') &&
+                  (await dependencies.tasks?.hasVisibleTask(actor, id))
+                )
+                  return true;
+                return (
+                  auth.allows(actor, 'obligations:review') &&
+                  !!(await dependencies.reviews?.list(actor.orgId, id))?.length
+                );
+              }
+            : undefined,
+        ),
+      );
+    }
     const { intelligence } = dependencies;
     const extraction =
       dependencies.obligations && intelligence.extractObligations
