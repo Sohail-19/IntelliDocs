@@ -175,7 +175,8 @@ def validate_openapi(schemas: dict[Path, dict[str, Any]]) -> None:
     spec = load_json(OPENAPI)
     if spec.get("openapi") != "3.1.0" or spec.get("info", {}).get("version") != "v1":
         raise ContractError("contracts/openapi/intelligence.v1.yaml: must be OpenAPI 3.1.0, version v1")
-    expected = {"/health": "get", "/v1/ingest": "post", "/v1/index": "post", "/v1/search": "post", "/v1/answer": "post", "/v1/extract-obligations": "post"}
+    source_endpoint = "/v1/documents/{doc_id}/source"
+    expected = {"/health": "get", "/v1/ingest": "post", source_endpoint: "get", "/v1/index": "post", "/v1/search": "post", "/v1/answer": "post", "/v1/extract-obligations": "post"}
     if set(spec.get("paths", {})) != set(expected):
         raise ContractError("contracts/openapi/intelligence.v1.yaml: paths do not match the v1 contract")
     for endpoint, method in expected.items():
@@ -183,6 +184,11 @@ def validate_openapi(schemas: dict[Path, dict[str, Any]]) -> None:
         if not isinstance(operation, dict) or "responses" not in operation:
             raise ContractError(f"contracts/openapi/intelligence.v1.yaml: {method.upper()} {endpoint} is incomplete")
         if endpoint == "/health":
+            continue
+        if endpoint == source_endpoint:
+            pdf = operation["responses"].get("200", {}).get("content", {}).get("application/pdf", {})
+            if pdf.get("schema") != {"type": "string", "format": "binary"}:
+                raise ContractError("Original source response must be a binary PDF")
             continue
         media_type = "multipart/form-data" if endpoint == "/v1/ingest" else "application/json"
         request_schema = operation.get("requestBody", {}).get("content", {}).get(media_type, {}).get("schema", {})

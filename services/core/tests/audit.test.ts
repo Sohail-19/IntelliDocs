@@ -15,6 +15,7 @@ import { up as assignmentMigration } from '../migrations/1700000000006_routing_a
 import { up as workflowMigration } from '../migrations/1700000000007_task_workflow.js';
 import { up as reviewMigration } from '../migrations/1700000000008_obligation_review.js';
 import { up as confidenceMigration } from '../migrations/1700000000009_obligation_confidence.js';
+import { up as documentMetadata } from '../migrations/1700000000010_document_metadata.js';
 import { createApp } from '../src/app.js';
 import { PostgresAuditReader } from '../src/audit.js';
 import type { AuditEntry } from '../src/audit.js';
@@ -66,6 +67,7 @@ beforeAll(async () => {
   await apply(workflowMigration);
   await apply(reviewMigration);
   await apply(confidenceMigration);
+  await apply(documentMetadata);
   const config = await loadOrgConfig(
     fileURLToPath(new URL('../../../config/orgs/example.yaml', import.meta.url)),
   );
@@ -250,6 +252,20 @@ describe('core audit trail with PostgreSQL', () => {
       },
     ]);
     expect(JSON.stringify(refreshed)).not.toContain(admin.refresh);
+    const { refresh_token: fresh } = refresh.body as { refresh_token: string };
+    const logout = await client.post('/api/auth/logout').send({ refresh_token: fresh });
+    expect(logout.status).toBe(204);
+    const logoutAudit = await rowsFor(logout);
+    expect(logoutAudit).toMatchObject([
+      { action: 'auth.logout', actor_user_id: admin.id, after: { session_active: false } },
+    ]);
+    expect(JSON.stringify(logoutAudit)).not.toContain(fresh);
+    expect((await client.post('/api/auth/refresh').send({ refresh_token: fresh })).status).toBe(
+      401,
+    );
+    const repeatedLogout = await client.post('/api/auth/logout').send({ refresh_token: fresh });
+    expect(repeatedLogout.status).toBe(204);
+    expect(await rowsFor(repeatedLogout)).toEqual([]);
 
     const query = {
       entity_type: 'document',
@@ -275,6 +291,16 @@ describe('core audit trail with PostgreSQL', () => {
       'document.index',
     ]);
     expect(next.entries[0]?.id).toBeLessThan(page.next_cursor ?? 0);
+    const indexed = await client
+      .get('/api/audit')
+      .set('Authorization', manager.bearer)
+      .query({ ...query, action: 'document.index' });
+    const indexPage = indexed.body as typeof page;
+    expect(indexPage.entries.map((entry) => entry.action)).toEqual([
+      'document.index',
+      'document.index',
+    ]);
+    expect(indexPage.next_cursor).toBeNull();
     const dated = await client
       .get('/api/audit')
       .set('Authorization', admin.bearer)

@@ -60,6 +60,19 @@ describe('GET /api/answer', () => {
     });
   });
 
+  it('forwards trusted page coordinates without changing the verified claim', async () => {
+    const value = structuredClone(example);
+    const citation = value.claims[0]?.citations[0];
+    if (!citation) throw new Error('Expected a citation fixture');
+    citation.boxes = [{ page: citation.page, bbox: [10, 20, 210, 55] }];
+    const answer = vi.fn().mockResolvedValue(value);
+    const response = await request(appWithAnswer(answer)).get(
+      '/api/answer?query=report&language=en&top_k=2',
+    );
+    expect(response.status).toBe(200);
+    expect(response.body).toEqual(value);
+  });
+
   it.each([
     'query=%20%20&language=en&top_k=2',
     'query=report&top_k=2',

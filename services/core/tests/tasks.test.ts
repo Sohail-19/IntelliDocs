@@ -174,19 +174,22 @@ describe('obligation task workflow', () => {
     const feed = await client.get('/api/tasks').set('Authorization', owner);
     expect(feed.status).toBe(200);
     expect(feed.body).toMatchObject({
+      available_scopes: ['mine', 'department'],
       tasks: [
-        { id: 9, status: 'done' },
-        { id: 7, status: 'in_progress' },
+        { id: 9, status: 'done', allowed_transitions: [], overdue: false },
+        { id: 7, status: 'in_progress', allowed_transitions: ['done', 'rejected'] },
         {
           id: 1,
           action: 'File report 1',
+          owner: 'Owner',
           due_date: '2026-11-18',
           citations: [citation],
           scope: 'mine',
+          allowed_transitions: ['acknowledged', 'rejected'],
         },
         { id: 4, scope: 'mine' },
-        { id: 2, scope: 'department' },
-        { id: 10, due_date: null },
+        { id: 2, scope: 'department', owner: 'finance' },
+        { id: 10, due_date: null, overdue: false },
       ],
     });
     expect(
@@ -200,9 +203,10 @@ describe('obligation task workflow', () => {
     ).toMatchObject({ tasks: [{ id: 2 }] });
     expect(
       (await client.get('/api/tasks?scope=review').set('Authorization', manager)).body,
-    ).toMatchObject({ tasks: [{ id: 3 }] });
+    ).toMatchObject({ tasks: [{ id: 3 }], available_scopes: ['mine', 'department', 'review'] });
     expect((await client.get('/api/tasks?scope=review').set('Authorization', owner)).body).toEqual({
       tasks: [],
+      available_scopes: ['mine', 'department'],
     });
     expect((await client.get('/api/tasks').set('Authorization', other)).body).toMatchObject({
       tasks: [{ id: 6 }],
@@ -222,6 +226,15 @@ describe('obligation task workflow', () => {
         .set('Authorization', token)
         .send({ status, reason });
     expect((await client.get('/api/tasks')).status).toBe(401);
+    expect(
+      (await client.get('/api/tasks?scope=department').set('Authorization', viewer)).body,
+    ).toMatchObject({
+      tasks: [
+        { id: 9, allowed_transitions: [] },
+        { id: 7, allowed_transitions: [] },
+        { id: 2, allowed_transitions: [] },
+      ],
+    });
     expect((await change(2, viewer, 'acknowledged')).status).toBe(403);
     expect((await change(5, owner, 'acknowledged')).status).toBe(404);
     expect((await change(1, other, 'acknowledged')).status).toBe(404);

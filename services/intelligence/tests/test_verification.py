@@ -146,8 +146,23 @@ def test_multi_page_quotes_use_canonical_block_spans(cross_page: bool) -> None:
     [citation] = result.citations
     assert (citation.page_start, citation.page_end) == ((3, 4) if cross_page else (4, 4))
     assert citation.page == citation.page_start
+    assert citation.boxes is not None
+    assert [box.page for box in citation.boxes] == ([3, 4] if cross_page else [4])
+    assert all(box.bbox == [0, 0, 10, 10] for box in citation.boxes)
     canonical = canonical_document(document)
     assert canonical.text[citation.char_start : citation.char_end] == citation.quote
+    validate_contract(
+        citation.model_dump(mode="json", exclude_none=True), "citation.v1.schema.json"
+    )
+
+
+def test_non_pdf_citation_keeps_the_page_and_quote_without_layout() -> None:
+    document = two_page_document().model_copy(update={"mime_type": "message/rfc822"})
+    chunks = Chunker(ChunkingConfig(100, 0, "whitespace")).chunk(document)
+    draft = claim("Submission is due Friday.", chunk_id=chunks[0].id)
+    [result] = CitationVerifier().verify([draft], chunks, documents={document.id: document})
+    [citation] = result.citations
+    assert citation.page == 4 and citation.quote == draft.quote and citation.boxes is None
 
 
 def test_inconsistent_offsets_ambiguous_ids_and_wrong_documents_fail() -> None:

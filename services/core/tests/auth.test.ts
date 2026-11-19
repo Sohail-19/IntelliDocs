@@ -66,9 +66,9 @@ class MemoryUsers implements AuthRepository {
     return Promise.resolve(this.accounts.get(id));
   }
 
-  saveRefresh(user: Principal, token: RefreshRecord): Promise<void> {
+  saveRefresh(user: Principal, token: RefreshRecord): Promise<boolean> {
     this.tokens.set(token.hash, { ...token, userId: user.id });
-    return Promise.resolve();
+    return Promise.resolve(true);
   }
 
   async rotateRefresh(
@@ -83,7 +83,17 @@ class MemoryUsers implements AuthRepository {
     if (user) await this.saveRefresh(user, token);
     return user;
   }
+  revokeRefresh(hash: string): Promise<void> {
+    this.tokens.delete(hash);
+    return Promise.resolve();
+  }
   replaceRoles(): Promise<'missing'> {
+    return Promise.resolve('missing');
+  }
+  listUsers(): Promise<[]> {
+    return Promise.resolve([]);
+  }
+  changeUser(): Promise<'missing'> {
     return Promise.resolve('missing');
   }
 }
@@ -262,6 +272,47 @@ describe('core auth', () => {
       (await client.post('/api/auth/refresh').send({ refresh_token: successful.refresh_token }))
         .status,
     ).toBe(401);
+  });
+
+  it('reports the current grants from the organization policy', async () => {
+    const { client, register, login } = await setup();
+    expect((await client.get('/api/auth/me')).status).toBe(401);
+    expect((await register()).status).toBe(201);
+    const session = await login();
+    const response = await client
+      .get('/api/auth/me')
+      .set('Authorization', 'Bearer ' + session.access_token);
+    expect(response.status).toBe(200);
+    expect(response.body).toEqual({
+      user_id: 1,
+      org_id: 'example',
+      roles: [adminRole],
+      permissions: ['documents:search', 'documents:upload', 'users:register'],
+    });
+  });
+
+  it('allows preflight for configured browser origins only', async () => {
+    vi.stubEnv('CORE_CORS_ORIGINS', 'https://web.example.test, http://localhost:5173');
+    try {
+      const { client } = await setup(1);
+      const allowed = await client
+        .options('/api/auth/me')
+        .set('Origin', 'https://web.example.test')
+        .set('Access-Control-Request-Method', 'GET')
+        .set('Access-Control-Request-Headers', 'authorization');
+      expect(allowed.status).toBe(204);
+      expect(allowed.headers['access-control-allow-origin']).toBe('https://web.example.test');
+      expect(allowed.headers['access-control-allow-headers']).toContain('Authorization');
+
+      const response = await client.get('/api/auth/me').set('Origin', 'http://localhost:5173');
+      expect(response.status).toBe(401);
+      expect(response.headers['access-control-allow-origin']).toBe('http://localhost:5173');
+      expect(response.headers.vary).toContain('Origin');
+      const disallowed = await client.get('/health').set('Origin', 'https://unlisted.example.test');
+      expect(disallowed.headers['access-control-allow-origin']).toBeUndefined();
+    } finally {
+      vi.unstubAllEnvs();
+    }
   });
 
   it('adds security headers and rate limits authentication requests', async () => {

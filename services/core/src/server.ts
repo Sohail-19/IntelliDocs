@@ -47,18 +47,18 @@ async function start(): Promise<void> {
       await users.seed(slug, config.departments, Object.keys(config.roles ?? {}));
     }
     const auth = await AuthService.create(users, policies, settings);
+    const documents = new PostgresDocumentRepository(pool);
+    const orgConfigs = new Map(configs.map(({ slug, config }) => [slug, config]));
     const server = createApp(
       {
         intelligence: new IntelligenceClient(),
-        documents: new PostgresDocumentRepository(pool),
+        documents,
+        orgConfigs,
+        documentBrowser: { reader: documents, configs: orgConfigs },
         obligations: new PostgresObligationRepository(pool, routing),
         routing,
         tasks: new TaskRepository(pool, reviewRoles),
-        reviews: new ObligationReviewRepository(
-          pool,
-          routing,
-          new Map(configs.map(({ slug, config }) => [slug, config])),
-        ),
+        reviews: new ObligationReviewRepository(pool, routing, orgConfigs),
         audit: new PostgresAuditReader(pool),
       },
       { auth },

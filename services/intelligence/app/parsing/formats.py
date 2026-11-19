@@ -1,5 +1,6 @@
 """Local adapters for image, DOCX, and exported email content."""
 
+import json
 from collections.abc import Sequence
 from dataclasses import dataclass
 from email import policy
@@ -14,30 +15,20 @@ from intellidocs_intelligence.models import Page, ParseResult, TableBlock, TextB
 
 from .base import DocumentParser, dependency, result_for
 
-MIME_TYPES = {
-    ".pdf": "application/pdf",
-    ".png": "image/png",
-    ".jpg": "image/jpeg",
-    ".jpeg": "image/jpeg",
-    ".docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-    ".eml": "message/rfc822",
-    ".msg": "application/vnd.ms-outlook",
-}
+_FORMAT_NAME = "document-upload-formats.v1.json"
+_FORMAT_PATH = Path(__file__).resolve().parents[4] / "contracts" / _FORMAT_NAME
+if not _FORMAT_PATH.is_file():
+    _FORMAT_PATH = Path("/contracts") / _FORMAT_NAME
+_FORMATS: dict[str, dict[str, str]] = json.loads(_FORMAT_PATH.read_text(encoding="utf-8"))
+MIME_TYPES = {suffix: entry["mime_type"] for suffix, entry in _FORMATS.items()}
+_SIGNATURES = {suffix: bytes.fromhex(entry["signature"]) for suffix, entry in _FORMATS.items()}
 
 
 def validate_file(filename: str, content: bytes, max_bytes: int) -> str:
     suffix = Path(filename).suffix.lower()
     if suffix not in MIME_TYPES:
         raise ValueError(f"Unsupported file type {suffix!r}")
-    signatures = {
-        ".pdf": b"%PDF-",
-        ".png": b"\x89PNG\r\n\x1a\n",
-        ".jpg": b"\xff\xd8\xff",
-        ".jpeg": b"\xff\xd8\xff",
-        ".docx": b"PK",
-        ".msg": bytes.fromhex("d0cf11e0a1b11ae1"),
-    }
-    if not content or (suffix in signatures and not content.startswith(signatures[suffix])):
+    if not content or not content.startswith(_SIGNATURES[suffix]):
         raise ValueError("File contents do not match the filename type")
     return MIME_TYPES[suffix]
 

@@ -237,12 +237,12 @@ describe('document repository', () => {
     expect(connection.query).toHaveBeenNthCalledWith(
       2,
       expect.stringContaining('INSERT INTO documents'),
-      ['parent', 'mail.eml', 'parsed', null, null, 42, null],
+      ['parent', 'mail.eml', 'parsed', null, null, 42, null, null, null, 'message/rfc822', [], 0],
     );
     expect(connection.query).toHaveBeenNthCalledWith(
       4,
       expect.stringContaining('INSERT INTO documents'),
-      ['child', 'attached.pdf', 'parsed', 42, null, 42, null],
+      ['child', 'attached.pdf', 'parsed', 42, null, 42, null, null, null, 'application/pdf', [], 0],
     );
     expect(connection.query).toHaveBeenLastCalledWith('COMMIT');
     expect(connection.release).toHaveBeenCalled();

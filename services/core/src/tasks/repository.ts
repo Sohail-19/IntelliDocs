@@ -1,15 +1,14 @@
 import type { Pool, PoolClient } from 'pg';
+import type { TaskFeed, TaskRecord, TaskScope } from '../../../../contracts/core-api.v1.js';
 
 import { inTransaction, writeAudit } from '../audit.js';
 import type { AuditContext } from '../audit.js';
 import type { Principal } from '../auth/policy.js';
-import type { Claim } from '../intelligence/client.js';
 import { normalizedDeadline, resolvedDeadline } from '../obligation-values.js';
-import type { AssignmentTarget } from '../routing/assignments.js';
-import { taskTransition } from './workflow.js';
+import { allowedUserTransitions, taskTransition } from './workflow.js';
 import type { TaskState, TaskStatus } from './workflow.js';
 
-export type TaskScope = 'mine' | 'department' | 'review';
+export type { TaskScope } from '../../../../contracts/core-api.v1.js';
 
 export interface TaskFilters {
   scope?: TaskScope;
@@ -19,17 +18,16 @@ export interface TaskFilters {
   due_to?: string;
 }
 
-interface Task extends TaskState {
-  id: number;
-  obligation_id: string;
-  doc_id: string;
-  action: string;
-  due_date: string | null;
-  citations: Claim['citations'];
-  scope: TaskScope;
-  assignee_user_id: number | null;
-  queue_type: AssignmentTarget['queue_type'];
-  queue_name: string | null;
+type TaskRow = Omit<TaskRecord, 'allowed_transitions'> & { obligation_status: string };
+
+function toTask({ obligation_status, ...row }: TaskRow, canTransition: boolean): TaskRecord {
+  return {
+    ...row,
+    allowed_transitions:
+      canTransition && obligation_status !== 'needs_review' && obligation_status !== 'rejected'
+        ? allowedUserTransitions(row.status)
+        : [],
+  };
 }
 
 export const taskDueDate = 'CASE WHEN ' + resolvedDeadline + ' THEN ' + normalizedDeadline + ' END';
@@ -37,7 +35,7 @@ export const taskDueDate = 'CASE WHEN ' + resolvedDeadline + ' THEN ' + normaliz
 export async function lockTask(client: PoolClient, id: number, orgId: number, skipLocked = false) {
   const { rows } = await client.query<
     TaskState &
-      Pick<Task, 'doc_id' | 'due_date' | 'obligation_id'> & {
+      Pick<TaskRecord, 'doc_id' | 'due_date' | 'obligation_id'> & {
         org_slug: string;
         obligation_status: string;
       }
@@ -58,7 +56,7 @@ export async function lockTask(client: PoolClient, id: number, orgId: number, sk
 export async function recordTaskTransition(
   client: PoolClient,
   id: number,
-  task: TaskState & Pick<Task, 'doc_id' | 'obligation_id'>,
+  task: TaskState & Pick<TaskRecord, 'doc_id' | 'obligation_id'>,
   next: TaskState,
   audit: AuditContext,
 ) {
@@ -82,8 +80,23 @@ export class TaskRepository {
     private readonly reviewRoles: ReadonlyMap<string, string>,
   ) {}
 
-  list(actor: Principal, filters: TaskFilters) {
-    return this.visibleTasks(this.pool, actor, filters);
+  async feed(actor: Principal, filters: TaskFilters, canTransition: boolean): Promise<TaskFeed> {
+    const [rows, membership] = await Promise.all([
+      this.visibleTasks(this.pool, actor, filters),
+      this.pool.query<{ department_id: number | null }>(
+        'SELECT department_id FROM users WHERE id = $1 AND org_id = $2 AND active',
+        [actor.id, actor.orgId],
+      ),
+    ]);
+    const available_scopes: TaskScope[] = ['mine'];
+    if (membership.rows[0]?.department_id != null) available_scopes.push('department');
+    const reviewRole = this.reviewRoles.get(actor.orgSlug);
+    if (reviewRole && actor.roles.includes(reviewRole)) available_scopes.push('review');
+    return { tasks: rows.map((row) => toTask(row, canTransition)), available_scopes };
+  }
+
+  async hasVisibleTask(actor: Principal, docId: string): Promise<boolean> {
+    return (await this.visibleTasks(this.pool, actor, { doc_id: docId })).length > 0;
   }
 
   async transition(
@@ -92,7 +105,7 @@ export class TaskRepository {
     status: TaskStatus,
     reason: string | null,
     audit: AuditContext,
-  ): Promise<Task | 'missing' | 'invalid'> {
+  ): Promise<TaskRecord | 'missing' | 'invalid'> {
     return inTransaction(this.pool, async (client) => {
       const locked = await lockTask(client, id, actor.orgId);
       if (!locked) return 'missing';
@@ -104,7 +117,14 @@ export class TaskRepository {
       const next = taskTransition(task.status, status, reason, 'user');
       if (!next) return 'invalid';
       await recordTaskTransition(client, id, task, next, audit);
-      return { ...task, ...next };
+      return toTask(
+        {
+          ...task,
+          ...next,
+          overdue: next.status === 'done' || next.status === 'rejected' ? false : task.overdue,
+        },
+        true,
+      );
     });
   }
 
@@ -133,12 +153,12 @@ export class TaskRepository {
       params.push(value);
       clauses.push(predicate + ' $' + params.length);
     }
-    const { rows } = await client.query<Task>(
-      'SELECT * FROM (' +
+    const { rows } = await client.query<TaskRow>(
+      "SELECT *, status = 'overdue' OR (status NOT IN ('done', 'rejected') AND COALESCE(due_date < (CURRENT_TIMESTAMP AT TIME ZONE 'UTC')::date::text, false)) AS overdue FROM (" +
         'SELECT o.id, o.external_id AS obligation_id, d.external_id AS doc_id, o.action, ' +
-        'o.task_status AS status, o.task_rejection_reason AS rejection_reason, o.citations, ' +
+        'o.task_status AS status, o.status AS obligation_status, o.task_rejection_reason AS rejection_reason, o.citations, ' +
         taskDueDate +
-        ' AS due_date, a.assignee_user_id, a.queue_type, a.queue_name, ' +
+        ' AS due_date, a.assignee_user_id, a.queue_type, a.queue_name, COALESCE(assignee.name, a.queue_name) AS owner, ' +
         "CASE WHEN a.assignee_user_id = u.id THEN 'mine' " +
         "WHEN a.queue_type = 'department' AND a.queue_name = dep.name THEN 'department' " +
         "WHEN a.queue_type = 'role' AND a.queue_name = ANY($3::text[]) THEN " +
@@ -146,6 +166,7 @@ export class TaskRepository {
         'FROM obligations o JOIN documents d ON d.id = o.document_id ' +
         "JOIN assignments a ON a.obligation_id = o.id AND a.status = 'active' " +
         'JOIN users u ON u.id = $1 AND u.org_id = d.org_id AND u.active ' +
+        'LEFT JOIN users assignee ON assignee.id = a.assignee_user_id AND assignee.org_id = d.org_id ' +
         'LEFT JOIN departments dep ON dep.id = u.department_id AND dep.org_id = u.org_id ' +
         'WHERE d.org_id = $2 AND o.retired_at IS NULL AND o.external_id IS NOT NULL' +
         ') AS feed WHERE ' +

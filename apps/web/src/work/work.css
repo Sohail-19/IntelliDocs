@@ -1,0 +1,170 @@
+.work-page {
+  display: grid;
+  gap: 1.4rem;
+  min-width: 0;
+  width: 100%;
+  max-width: 90rem;
+  margin-inline: auto;
+}
+
+.work-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.3rem 0.55rem;
+  border-bottom: 1px solid var(--line);
+}
+
+.work-tabs button {
+  border-bottom: 3px solid transparent;
+  padding: 0.65rem 0.8rem;
+  color: var(--muted);
+  font-weight: 750;
+}
+
+.work-tabs button[aria-selected='true'] {
+  border-color: #16816d;
+  color: var(--navy);
+}
+
+.work-table-wrap {
+  overflow-x: auto;
+  border: 1px solid var(--line);
+  border-radius: 0.85rem;
+  background: white;
+}
+
+.work-table {
+  width: 100%;
+  min-width: 44rem;
+  border-collapse: collapse;
+  text-align: left;
+  font-size: 0.9rem;
+}
+
+.work-table th,
+.work-table td {
+  padding: 0.95rem;
+  vertical-align: top;
+  overflow-wrap: anywhere;
+}
+
+.work-table thead {
+  background: #edf3f8;
+  color: #344b65;
+}
+
+.work-table tbody tr {
+  border-top: 1px solid var(--line);
+}
+
+.work-table th[scope='row'] {
+  min-width: 12rem;
+  max-width: 23rem;
+  font-weight: 700;
+}
+
+.work-obligation {
+  display: block;
+  margin-bottom: 0.4rem;
+}
+
+.work-muted {
+  margin-top: 0.35rem;
+  color: var(--muted);
+  font-size: 0.8rem;
+}
+
+.work-status,
+.work-overdue {
+  display: inline-block;
+  border-radius: 0.35rem;
+  padding: 0.16rem 0.42rem;
+  font-size: 0.8rem;
+  font-weight: 750;
+  white-space: nowrap;
+}
+
+.work-status {
+  background: #edf3f8;
+  color: #314b64;
+}
+
+.work-overdue {
+  display: table;
+  margin-top: 0.35rem;
+  background: #fce5df;
+  color: #862e26;
+}
+
+.work-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.45rem;
+  min-width: 7rem;
+}
+
+.work-actions .secondary-button {
+  min-height: 2.1rem;
+  padding: 0.32rem 0.65rem;
+  font-size: 0.82rem;
+  white-space: nowrap;
+}
+
+.work-actions .work-danger {
+  color: #8d3026;
+}
+
+.review-table {
+  min-width: 56rem;
+}
+
+.work-review-field {
+  min-width: 10rem;
+}
+
+.work-evidence {
+  display: grid;
+  gap: 0.22rem;
+  min-width: 9rem;
+  margin-top: 0.4rem;
+  color: var(--muted);
+  font-size: 0.77rem;
+}
+
+.work-evidence div {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
+.work-evidence dd {
+  flex-shrink: 0;
+  font-variant-numeric: tabular-nums;
+}
+
+.work-table .field {
+  margin-top: 0.65rem;
+  font-size: 0.8rem;
+}
+
+.work-table .field :is(select, input, textarea) {
+  width: 100%;
+  min-width: 0;
+  padding: 0.38rem 0.53rem;
+  border: 1px solid #bdcddd;
+  border-radius: 0.38rem;
+  background: white;
+  color: var(--navy);
+  font-weight: 500;
+}
+
+.work-reject {
+  display: grid;
+  gap: 0.55rem;
+  min-width: 11rem;
+}
+
+.work-page [role='alert'] {
+  margin-block: 0.7rem;
+}

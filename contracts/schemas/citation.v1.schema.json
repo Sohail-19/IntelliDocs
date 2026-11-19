@@ -14,6 +14,23 @@
     "char_end": { "type": "integer", "minimum": 0 },
     "quote": { "type": "string", "minLength": 1 },
     "clause_number": { "type": "string", "minLength": 1 },
-    "heading_path": { "type": "array", "items": { "type": "string", "minLength": 1 } }
+    "heading_path": { "type": "array", "items": { "type": "string", "minLength": 1 } },
+    "boxes": {
+      "description": "Optional PDF layout for blocks intersecting the cited span. Coordinates are page-local points in displayed orientation, with origin at the top left.",
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["page", "bbox"],
+        "properties": {
+          "page": { "type": "integer", "minimum": 1 },
+          "bbox": {
+            "description": "[x0, y0, x1, y1] in page points.",
+            "type": "array", "minItems": 4, "maxItems": 4,
+            "items": { "type": "number", "minimum": 0 }
+          }
+        }
+      }
+    }
   }
 }

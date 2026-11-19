@@ -1,4 +1,5 @@
 import { Router } from 'express';
+import type { CoreAdminApi } from '../../../contracts/core-api.v1.js';
 
 import type { AuditFilters, AuditReader } from './audit.js';
 import { principal } from './auth/routes.js';
@@ -26,6 +27,9 @@ export function parseAuditFilters(query: Record<string, unknown>): AuditFilters 
   for (const [key, value] of Object.entries(query)) {
     if (typeof value !== 'string' || !value.trim() || value.length > 256) return undefined;
     switch (key) {
+      case 'action':
+        filters.action = value;
+        break;
       case 'entity_type':
         filters.entityType = value;
         break;
@@ -73,7 +77,14 @@ export function auditRouter(reader: AuditReader, guard: Guard): Router {
     void reader
       .list(principal(response).orgId, filters)
       .then((result) => {
-        response.json(result);
+        const payload: CoreAdminApi['/api/audit']['result'] = {
+          ...result,
+          entries: result.entries.map((entry) => ({
+            ...entry,
+            timestamp: entry.timestamp.toISOString(),
+          })),
+        };
+        response.json(payload);
       })
       .catch(next);
   });

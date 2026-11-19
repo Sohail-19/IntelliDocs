@@ -3,6 +3,13 @@ import { createHash, randomBytes, timingSafeEqual } from 'node:crypto';
 import { argon2id, hash, verify } from 'argon2';
 import { errors, jwtVerify, SignJWT } from 'jose';
 
+import type {
+  AuthCredentials,
+  AuthProfile,
+  AuthTokens,
+  CoreAdminApi,
+  UserChange,
+} from '../../../../contracts/core-api.v1.js';
 import type { AuditContext, AuditRequest } from '../audit.js';
 import { permits } from './policy.js';
 import type { OrgPolicy, Permission, Principal } from './policy.js';
@@ -58,11 +65,7 @@ export function authSettingsFromEnv(): AuthSettings {
   };
 }
 
-export interface Credentials {
-  org_id: string;
-  email: string;
-  password: string;
-}
+export type Credentials = AuthCredentials;
 
 export interface Registration extends Credentials {
   name: string;
@@ -97,6 +100,16 @@ export class AuthService {
 
   allows(user: Principal, permission: Permission): boolean {
     return permits(this.policies.get(user.orgSlug), user.roles, permission);
+  }
+
+  profile(user: Principal): AuthProfile {
+    const roles = this.policies.get(user.orgSlug)?.roles;
+    return {
+      user_id: user.id,
+      org_id: user.orgSlug,
+      roles: user.roles,
+      permissions: [...new Set(user.roles.flatMap((role) => roles?.get(role) ?? []))].sort(),
+    };
   }
 
   async register(input: Registration, audit: AuditRequest, actor?: Principal): Promise<void> {
@@ -135,7 +148,7 @@ export class AuthService {
     if (outcome === 'forbidden') throw new AuthError(403, 'Registration is not allowed');
   }
 
-  async login(input: Credentials, audit: AuditRequest) {
+  async login(input: Credentials, audit: AuditRequest): Promise<AuthTokens> {
     const user = await this.repository.account(input.org_id, input.email);
     const valid = await verify(user?.passwordHash ?? this.dummyHash, input.password);
     if (!user || !valid || !this.policies.has(user.orgSlug)) {
@@ -143,12 +156,13 @@ export class AuthService {
     }
     const now = this.now();
     const refresh = this.newRefresh(now);
-    const response = await this.issue(user, refresh.raw, now);
-    await this.repository.saveRefresh(user, refresh.record, audit);
-    return response;
+    if (!(await this.repository.saveRefresh(user, refresh.record, audit))) {
+      throw new AuthError(401, 'Invalid credentials');
+    }
+    return this.issue(user, refresh.raw, now);
   }
 
-  async refresh(raw: string, audit: AuditRequest) {
+  async refresh(raw: string, audit: AuditRequest): Promise<AuthTokens> {
     const now = this.now();
     const refresh = this.newRefresh(now);
     const user = await this.repository.rotateRefresh(hashToken(raw), now, refresh.record, audit);
@@ -157,25 +171,73 @@ export class AuthService {
     return this.issue(user, refresh.raw, now);
   }
 
+  async logout(raw: string, audit: AuditRequest): Promise<void> {
+    await this.repository.revokeRefresh(hashToken(raw), audit);
+  }
+
   async replaceRoles(
     userId: number,
     names: string[],
     actor: Principal,
     audit: AuditContext,
   ): Promise<void> {
-    const policy = this.policies.get(actor.orgSlug);
-    if (!policy || !this.allows(actor, 'users:roles')) throw new AuthError(403, 'Access denied');
+    const policy = this.userAdminPolicy(actor);
     const roles = [...new Set(names)].sort();
     if (!roles.length || roles.some((role) => !policy.roles.has(role))) {
       throw new AuthError(422, 'Invalid roles for this organization');
     }
-    const administrators = [...policy.roles]
+    const outcome = await this.repository.replaceRoles(
+      userId,
+      roles,
+      this.administratorRoles(policy),
+      audit,
+    );
+    if (outcome !== 'updated') this.rejectUserChange(outcome);
+  }
+
+  async listUsers(actor: Principal): Promise<CoreAdminApi['/api/users']['result']> {
+    const policy = this.userAdminPolicy(actor);
+    return {
+      users: await this.repository.listUsers(actor.orgId),
+      departments: policy.departments,
+      roles: [...policy.roles.keys()].sort(),
+    };
+  }
+
+  async changeUser(userId: number, change: UserChange, actor: Principal, audit: AuditContext) {
+    const policy = this.userAdminPolicy(actor);
+    if (
+      'department' in change &&
+      change.department !== null &&
+      !policy.departments.includes(change.department)
+    ) {
+      throw new AuthError(422, 'Invalid department for this organization');
+    }
+    const user = await this.repository.changeUser(
+      userId,
+      change,
+      this.administratorRoles(policy),
+      audit,
+    );
+    if (typeof user === 'string') this.rejectUserChange(user);
+    return user;
+  }
+
+  private userAdminPolicy(actor: Principal) {
+    const policy = this.policies.get(actor.orgSlug);
+    if (!policy || !this.allows(actor, 'users:roles')) throw new AuthError(403, 'Access denied');
+    return policy;
+  }
+
+  private administratorRoles(policy: OrgPolicy): string[] {
+    return [...policy.roles]
       .filter(([, grants]) => grants.includes('users:roles'))
       .map(([role]) => role);
-    const outcome = await this.repository.replaceRoles(userId, roles, administrators, audit);
+  }
+
+  private rejectUserChange(outcome: 'missing' | 'last_admin'): never {
     if (outcome === 'missing') throw new AuthError(404, 'User not found');
-    if (outcome === 'last_admin')
-      throw new AuthError(409, 'At least one active role administrator is required');
+    throw new AuthError(409, 'At least one active role administrator is required');
   }
 
   async authenticate(header: string | undefined): Promise<Principal> {
@@ -217,7 +279,7 @@ export class AuthService {
     };
   }
 
-  private async issue(user: Principal, refresh: string, now: Date) {
+  private async issue(user: Principal, refresh: string, now: Date): Promise<AuthTokens> {
     const issued = Math.floor(now.getTime() / 1000);
     const access = await new SignJWT({})
       .setProtectedHeader({ alg: 'HS256', typ: 'at+jwt' })

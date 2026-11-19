@@ -15,16 +15,23 @@ from intellidocs_intelligence.models import (
     SearchTimings,
 )
 
+from .chunking.canonical import CanonicalDocument, canonical_document
 from .reranking import Reranker, RerankerConfig, create_reranker
 from .retrieval import Candidate, Retriever, create_retriever
+from .storage import Storage
 from .vector_store import QdrantStore
 
 SearchFactory = Callable[[], AbstractContextManager["SearchService"]]
 
 
-def _search_result(candidate: Candidate) -> SearchResult:
+def _search_result(candidate: Candidate, document: CanonicalDocument | None) -> SearchResult:
     chunk = candidate.chunk
     page_start = chunk.page_start or chunk.page
+    boxes = None
+    if document is not None and document.text[chunk.char_start : chunk.char_end] == chunk.text:
+        boxes = document.citation_boxes(
+            document.overlapping_blocks(chunk.char_start, chunk.char_end)
+        )
     return SearchResult(
         chunk=chunk,
         score=candidate.score,
@@ -41,15 +48,19 @@ def _search_result(candidate: Candidate) -> SearchResult:
                 quote=chunk.text,
                 clause_number=chunk.clause_number,
                 heading_path=chunk.heading_path or [],
+                boxes=boxes,
             )
         ],
     )
 
 
 class SearchService:
-    def __init__(self, retriever: Retriever, reranker: Reranker) -> None:
+    def __init__(
+        self, retriever: Retriever, reranker: Reranker, storage: Storage | None = None
+    ) -> None:
         self.retriever = retriever
         self.reranker = reranker
+        self.storage = storage
 
     def search(self, request: SearchRequest) -> SearchResponse:
         start = perf_counter()
@@ -58,7 +69,18 @@ class SearchService:
         retrieved = perf_counter()
         ranked = self.reranker.rerank(request.query, candidates, request.top_k)
         reranked = perf_counter()
-        results = [_search_result(candidate) for candidate in ranked]
+        documents: dict[str, CanonicalDocument | None] = {}
+        if self.storage is not None:
+            for doc_id in dict.fromkeys(candidate.chunk.doc_id for candidate in ranked):
+                try:
+                    documents[doc_id] = canonical_document(
+                        self.storage.load_result(doc_id).document
+                    )
+                except (OSError, ValueError):
+                    documents[doc_id] = None
+        results = [
+            _search_result(candidate, documents.get(candidate.chunk.doc_id)) for candidate in ranked
+        ]
         debug = None
         if request.debug:
             debug = SearchDebug(
@@ -79,9 +101,11 @@ def _cached_reranker(config: RerankerConfig) -> Reranker:
 
 
 @contextmanager
-def search_from_env() -> Iterator[SearchService]:
+def search_from_env(storage: Storage | None = None) -> Iterator[SearchService]:
     store = QdrantStore.from_env(configured_embedder())
     try:
-        yield SearchService(create_retriever(store), _cached_reranker(RerankerConfig.from_env()))
+        yield SearchService(
+            create_retriever(store), _cached_reranker(RerankerConfig.from_env()), storage
+        )
     finally:
         store.client.close()

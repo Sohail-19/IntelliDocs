@@ -1,3 +1,6 @@
+import type { TaskAction, TaskStatus } from '../../../../contracts/core-api.v1.js';
+export type { TaskStatus } from '../../../../contracts/core-api.v1.js';
+
 const transitions = {
   open: ['acknowledged', 'rejected', 'overdue'],
   acknowledged: ['in_progress', 'rejected'],
@@ -5,9 +8,12 @@ const transitions = {
   overdue: ['acknowledged', 'in_progress', 'rejected'],
   done: [],
   rejected: [],
-} as const satisfies Record<string, readonly string[]>;
+} as const satisfies Record<TaskStatus, readonly TaskStatus[]>;
 
-export type TaskStatus = keyof typeof transitions;
+export function allowedUserTransitions(from: TaskStatus): TaskAction[] {
+  const allowed: readonly Exclude<TaskStatus, 'open'>[] = transitions[from];
+  return allowed.filter((status): status is TaskAction => status !== 'overdue');
+}
 
 export interface TaskState {
   status: TaskStatus;

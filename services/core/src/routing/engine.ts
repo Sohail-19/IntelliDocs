@@ -1,24 +1,9 @@
 import type { Obligation } from '../intelligence/client.js';
+import type { RoutingPolicy, RoutingRule } from '../../../../contracts/core-api.v1.js';
 
-export type RoutingTarget = { kind: 'user' | 'role_queue' | 'department_queue'; value: string };
-export interface RoutingConditions {
-  obligation_type?: NonNullable<Obligation['obligation_type']>;
-  owner_department?: string;
-  document_type?: string;
-  keywords?: string[];
-  deadline_within_days?: number;
-}
-export interface RoutingRule {
-  id: string;
-  priority: number;
-  conditions: RoutingConditions;
-  target: RoutingTarget;
-  escalation_after_days?: number;
-}
-export interface RoutingPolicy {
-  min_confidence: number;
-  review_role: string;
-}
+export type { RoutingPolicy, RoutingRule };
+export type RoutingTarget = RoutingRule['target'];
+export type RoutingConditions = RoutingRule['conditions'];
 
 export interface RoutingFacts {
   obligationType: NonNullable<Obligation['obligation_type']>;

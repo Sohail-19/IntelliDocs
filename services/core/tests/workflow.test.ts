@@ -3,6 +3,7 @@ import { fileURLToPath } from 'node:url';
 
 import request from 'supertest';
 import { expect, it, vi } from 'vitest';
+import type { CoreAdminApi } from '../../../contracts/core-api.v1.js';
 
 import { up as initial } from '../migrations/1700000000000_initial.js';
 import { up as parents } from '../migrations/1700000000001_document_parents.js';
@@ -14,6 +15,7 @@ import { up as assignments } from '../migrations/1700000000006_routing_assignmen
 import { up as tasks } from '../migrations/1700000000007_task_workflow.js';
 import { up as review } from '../migrations/1700000000008_obligation_review.js';
 import { up as confidenceMigration } from '../migrations/1700000000009_obligation_confidence.js';
+import { up as documentMetadata } from '../migrations/1700000000010_document_metadata.js';
 import { createApp } from '../src/app.js';
 import { PostgresAuditReader } from '../src/audit.js';
 import type { AuditEntry } from '../src/audit.js';
@@ -127,7 +129,12 @@ const parsed: IngestResponse = {
       source_uri: 'file:///invoice.pdf',
       status: 'ready',
       doc_type: 'invoice',
-      pages: [],
+      department: 'finance',
+      doc_date: '2026-11-19',
+      pages: [
+        { page: 1, language: 'en', blocks: [] },
+        { page: 2, language: 'hi', blocks: [] },
+      ],
     },
     parser_name: 'test',
     parser_version: '1',
@@ -135,7 +142,7 @@ const parsed: IngestResponse = {
   },
 };
 
-async function setup(database: ReturnType<typeof createTestDatabase>) {
+async function setup(database: ReturnType<typeof createTestDatabase>, limitedSourceAccess = false) {
   const { apply, pool } = database;
   for (const migration of [
     initial,
@@ -148,6 +155,7 @@ async function setup(database: ReturnType<typeof createTestDatabase>) {
     tasks,
     review,
     confidenceMigration,
+    documentMetadata,
   ]) {
     await apply(migration);
   }
@@ -166,6 +174,10 @@ async function setup(database: ReturnType<typeof createTestDatabase>) {
     routing_rules: [reportsRule, ...config.routing_rules],
   });
   if (!engine || !policy || !config.routing_policy) throw new Error('Missing test policy');
+  if (limitedSourceAccess) {
+    policy.roles.set('finance_officer', ['tasks:read']);
+    policy.roles.set('manager', ['obligations:review']);
+  }
   const routing = new PostgresRoutingService(pool, new Map([['example', engine]]), () => now);
   const role = new Map([['example', config.routing_policy.review_role]]);
   const users = new PostgresAuthRepository(pool);
@@ -185,6 +197,13 @@ async function setup(database: ReturnType<typeof createTestDatabase>) {
   );
   const intelligence = {
     ingest: vi.fn<IntelligenceClient['ingest']>().mockResolvedValue(parsed),
+    pdfSource: vi
+      .fn<IntelligenceClient['pdfSource']>()
+      .mockImplementation(() =>
+        Promise.resolve(
+          new Response('%PDF-fixture', { headers: { 'content-type': 'application/pdf' } }),
+        ),
+      ),
     index: vi
       .fn<IntelligenceClient['index']>()
       .mockResolvedValue({ doc_id: docId, chunk_count: 1, embedding_model: 'fake', warnings: [] }),
@@ -197,6 +216,11 @@ async function setup(database: ReturnType<typeof createTestDatabase>) {
       {
         intelligence,
         documents: new PostgresDocumentRepository(pool),
+        orgConfigs: new Map([['example', config]]),
+        documentBrowser: {
+          reader: new PostgresDocumentRepository(pool),
+          configs: new Map([['example', config]]),
+        },
         obligations: new PostgresObligationRepository(pool, routing),
         routing,
         tasks: new TaskRepository(pool, role),
@@ -251,6 +275,10 @@ it('uploads, indexes, extracts, routes, and completes an assigned task with a li
   const database = createTestDatabase();
   try {
     const { client, intelligence, admin, owner } = await setup(database);
+    await database.db.exec(
+      "WITH other AS (INSERT INTO organizations (slug) VALUES ('another') RETURNING id) " +
+        "INSERT INTO documents (external_id, filename, org_id, status) SELECT 'other-doc', 'Other.pdf', id, 'parsed' FROM other",
+    );
     const upload = await client
       .post('/v1/upload')
       .set('Authorization', admin)
@@ -260,6 +288,48 @@ it('uploads, indexes, extracts, routes, and completes an assigned task with a li
         contentType: 'application/pdf',
       });
     expect(upload.status).toBe(202);
+    const options = await client.get('/api/documents/upload-options').set('Authorization', admin);
+    expect(options.body).toMatchObject({
+      departments: ['legal', 'finance'],
+      document_types: ['agreement', 'invoice'],
+      max_upload_bytes: 20971520,
+    });
+    const list = await client.get('/api/documents').set('Authorization', admin);
+    expect(list.body).toMatchObject({
+      documents: [
+        {
+          id: docId,
+          filename,
+          department: 'finance',
+          doc_type: 'invoice',
+          doc_date: '2026-11-19',
+          languages: ['en', 'hi'],
+          page_count: 2,
+          status: 'indexed',
+          extraction_status: 'completed',
+        },
+      ],
+    });
+    const detail = await client.get('/api/documents/' + docId).set('Authorization', admin);
+    expect(detail.body).toMatchObject({ document: { id: docId, mime_type: 'application/pdf' } });
+    expect((await client.get('/api/documents/other-doc').set('Authorization', admin)).status).toBe(
+      404,
+    );
+    const searchOptions = await client.get('/api/search/options').set('Authorization', owner);
+    expect(searchOptions.body).toMatchObject({
+      languages: ['en', 'hi'],
+      departments: ['legal', 'finance'],
+    });
+    const sourceRoute = '/api/documents/' + docId + '/source';
+    expect((await client.get(sourceRoute)).status).toBe(401);
+    const pdf = await client.get(sourceRoute).set('Authorization', owner);
+    expect(pdf.status).toBe(200);
+    expect(pdf.headers['content-type']).toBe('application/pdf');
+    expect(pdf.headers['cache-control']).toBe('private, no-store');
+    expect(
+      (await client.get('/api/documents/other-doc/source').set('Authorization', owner)).status,
+    ).toBe(404);
+    expect(intelligence.pdfSource.mock.calls).toEqual([[docId, 'example']]);
     expect(intelligence.ingest).toHaveBeenCalledWith(
       expect.objectContaining({ org_id: 'example', doc_type: 'invoice', index: false }),
       filename,
@@ -363,6 +433,113 @@ it('uploads, indexes, extracts, routes, and completes an assigned task with a li
   }
 }, 15_000);
 
+it('scopes account administration and organisation settings to configured grants and audits changes', async () => {
+  const database = createTestDatabase();
+  try {
+    const { client, admin, owner, manager } = await setup(database);
+    const overview = await client.get('/api/organisation').set('Authorization', manager);
+    expect(overview.status).toBe(200);
+    expect(overview.body).toMatchObject({
+      org_id: 'example',
+      languages: ['en', 'hi'],
+      departments: ['legal', 'finance'],
+      document_types: ['agreement', 'invoice'],
+      routing_policy: { review_role: 'manager' },
+    });
+    const org = overview.body as CoreAdminApi['/api/organisation']['result'];
+    expect(org.routing_rules).toContainEqual({
+      id: 'default',
+      priority: 0,
+      conditions: {},
+      target: { kind: 'role_queue', value: 'officer' },
+    });
+    expect((await client.get('/api/organisation').set('Authorization', owner)).status).toBe(403);
+    expect((await client.get('/api/users').set('Authorization', manager)).status).toBe(403);
+    await database.db.exec(
+      "WITH other AS (INSERT INTO organizations (slug) VALUES ('other-org') RETURNING id) " +
+        "INSERT INTO users (id, org_id, email) SELECT 5000, id, 'isolated@example.test' FROM other",
+    );
+    const accounts = await client.get('/api/users').set('Authorization', admin);
+    expect(accounts.status).toBe(200);
+    const { users, departments, roles } = accounts.body as CoreAdminApi['/api/users']['result'];
+    expect(users).toHaveLength(3);
+    expect(JSON.stringify(accounts.body)).not.toContain('password_hash');
+    expect(departments).toContain('legal');
+    expect(roles).toContain('officer');
+    const adminId = users.find((user) => user.email === 'admin@example.test')?.id;
+    const ownerId = users.find((user) => user.email === 'owner@example.test')?.id;
+    if (!adminId || !ownerId) throw new Error('Missing seeded accounts');
+    const patch = (id: number, change: unknown, token = admin) =>
+      client
+        .patch('/api/users/' + id)
+        .set('Authorization', token)
+        .send(change as object);
+    expect((await patch(5000, { active: false })).status).toBe(404);
+    expect((await patch(adminId, { active: false })).status).toBe(409);
+    expect((await patch(ownerId, { department: 'unknown' })).status).toBe(422);
+    expect((await patch(ownerId, { department: 'legal' }, manager)).status).toBe(403);
+    const department = await patch(ownerId, { department: 'legal' });
+    expect(department.body).toMatchObject({ user: { id: ownerId, department: 'legal' } });
+    const role = await client
+      .put('/api/users/' + ownerId + '/roles')
+      .set('Authorization', admin)
+      .send({ roles: ['officer'] });
+    expect(role.status).toBe(204);
+    const deactivated = await patch(ownerId, { active: false });
+    expect(deactivated.body).toMatchObject({
+      user: { id: ownerId, department: 'legal', roles: ['officer'], active: false },
+    });
+    expect((await client.get('/api/auth/me').set('Authorization', owner)).status).toBe(401);
+    expect(
+      (await database.db.query('SELECT 1 FROM refresh_tokens WHERE user_id = $1', [ownerId])).rows,
+    ).toEqual([]);
+    const changes = await client
+      .get('/api/audit')
+      .set('Authorization', manager)
+      .query({ entity_type: 'user', entity_id: ownerId, action: 'user.deactivate' });
+    expect(changes.body).toMatchObject({
+      entries: [{ actor_user_id: adminId, before: { active: true }, after: { active: false } }],
+      next_cursor: null,
+    });
+  } finally {
+    await database.db.close();
+  }
+}, 15_000);
+
+it('allows a task assignee or reviewer to read only documents in their queue', async () => {
+  const database = createTestDatabase();
+  try {
+    const { client, admin, owner, manager, intelligence } = await setup(database, true);
+    const upload = await client
+      .post('/v1/upload')
+      .set('Authorization', admin)
+      .attach('file', Buffer.from('%PDF'), filename);
+    expect(upload.status).toBe(202);
+    await database.db.exec(
+      'INSERT INTO documents (org_id, external_id, filename, status) ' +
+        "SELECT id, 'unassigned', 'unassigned.pdf', 'parsed' FROM organizations WHERE slug = 'example'",
+    );
+    for (const access of [owner, manager]) {
+      expect((await client.get('/api/search/options').set('Authorization', access)).status).toBe(
+        403,
+      );
+      expect(
+        (await client.get('/api/documents/' + docId + '/source').set('Authorization', access))
+          .status,
+      ).toBe(200);
+      expect(
+        (await client.get('/api/documents/unassigned/source').set('Authorization', access)).status,
+      ).toBe(404);
+    }
+    expect(intelligence.pdfSource.mock.calls).toEqual([
+      [docId, 'example'],
+      [docId, 'example'],
+    ]);
+  } finally {
+    await database.db.close();
+  }
+}, 15_000);
+
 it('reviews pending obligations, preserves extracted values, and routes approval and rejection atomically', async () => {
   const database = createTestDatabase();
   try {
@@ -380,6 +557,16 @@ it('reviews pending obligations, preserves extracted values, and routes approval
     const pending = resource + 'pending/review';
     const unsupported = resource + 'unsupported/review';
     expect((await client.get(list).set('Authorization', owner)).status).toBe(403);
+    const options = '/api/obligations/review/options';
+    expect((await client.get(options).set('Authorization', owner)).status).toBe(403);
+    const reviewOptions = await client.get(options).set('Authorization', manager);
+    expect(reviewOptions.status).toBe(200);
+    const { departments, roles } = reviewOptions.body as {
+      departments: unknown[];
+      roles: unknown[];
+    };
+    expect(departments).toContain('finance');
+    expect(roles).toContainEqual({ name: 'finance_officer', department: 'finance' });
     const queued = await client.get(list).set('Authorization', manager);
     expect(queued.body).toMatchObject({
       obligations: [

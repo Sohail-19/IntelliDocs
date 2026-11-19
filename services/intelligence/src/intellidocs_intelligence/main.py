@@ -1,9 +1,10 @@
 """HTTP entry point for the intelligence service."""
 
 from typing import Annotated
+from uuid import UUID
 
-from fastapi import Depends, FastAPI, File, Form, HTTPException, UploadFile
-from fastapi.responses import JSONResponse
+from fastapi import Depends, FastAPI, File, Form, HTTPException, Query, UploadFile
+from fastapi.responses import FileResponse, JSONResponse
 
 from app.answering import AnswerFactory, answerer_from_env
 from app.extraction.service import ExtractionFactory, IndexNotReady, extraction_from_env
@@ -34,8 +35,8 @@ def get_indexing_factory(storage: Annotated[Storage, Depends(storage_from_env)])
     return lambda: indexer_from_env(storage)
 
 
-def get_search_factory() -> SearchFactory:
-    return search_from_env
+def get_search_factory(storage: Annotated[Storage, Depends(storage_from_env)]) -> SearchFactory:
+    return lambda: search_from_env(storage)
 
 
 def get_answer_factory(storage: Annotated[Storage, Depends(storage_from_env)]) -> AnswerFactory:
@@ -116,6 +117,36 @@ def index_document(
         raise HTTPException(400, str(error)) from error
     except Exception as error:
         raise HTTPException(503, "Indexing failed; retry the stored document") from error
+
+
+@app.get(
+    "/v1/documents/{doc_id}/source",
+    response_class=FileResponse,
+    responses={
+        200: {"content": {"application/pdf": {"schema": {"type": "string", "format": "binary"}}}}
+    },
+)
+def document_source(
+    doc_id: UUID,
+    org_id: Annotated[str, Query(pattern=r"^[A-Za-z0-9_-]+$")],
+    storage: Annotated[Storage, Depends(storage_from_env)],
+) -> FileResponse:
+    """Serve an original PDF to core after validating its stored organization."""
+    identifier = str(doc_id)
+    try:
+        parsed = storage.load_result(identifier)
+    except (OSError, ValueError) as error:
+        raise HTTPException(404, "Source not found") from error
+    if parsed.org_id != org_id:
+        raise HTTPException(404, "Source not found")
+    if parsed.document.mime_type != "application/pdf":
+        raise HTTPException(415, "This source does not have an original PDF")
+    path = storage.source_path(identifier, parsed.document.filename)
+    if not path.is_file():
+        raise HTTPException(404, "Source not found")
+    return FileResponse(
+        path, media_type="application/pdf", headers={"Cache-Control": "private, no-store"}
+    )
 
 
 @app.post("/v1/search", response_model=SearchResponse, response_model_exclude_none=True)

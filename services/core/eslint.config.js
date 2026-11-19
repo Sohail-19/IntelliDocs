@@ -1,17 +1,11 @@
-import eslint from "@eslint/js";
-import prettier from "eslint-config-prettier";
-import globals from "globals";
-import tseslint from "typescript-eslint";
+import eslint from '@eslint/js';
+import prettier from 'eslint-config-prettier';
+import globals from 'globals';
+import tseslint from 'typescript-eslint';
 
 export default tseslint.config(
   {
-    ignores: [
-      'dist/',
-      'coverage/',
-      'src/intelligence/openapi.generated.ts',
-      '*.config.js',
-      '*.config.ts',
-    ],
+    ignores: ['dist/', 'coverage/', '*.config.js', '*.config.ts'],
   },
   eslint.configs.recommended,
   ...tseslint.configs.recommendedTypeChecked,
@@ -25,5 +19,5 @@ export default tseslint.config(
       '@typescript-eslint/consistent-type-imports': 'error',
     },
   },
-  prettier
+  prettier,
 );

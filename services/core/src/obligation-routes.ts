@@ -3,6 +3,7 @@ import { readFileSync } from 'node:fs';
 import { Ajv2020 } from 'ajv/dist/2020.js';
 import addFormats from 'ajv-formats';
 import { Router } from 'express';
+import type { DocumentObligations } from '../../../contracts/core-api.v1.js';
 
 import { auditContext } from './audit.js';
 import type { AuditContext } from './audit.js';
@@ -159,11 +160,12 @@ export function obligationRouter(
           return;
         }
         const obligations = await repository.list({ doc_id: id }, orgId);
-        response.json({
+        const view: DocumentObligations = {
           obligations,
           extraction_status: state.extraction_status,
           extraction_error: state.extraction_error,
-        });
+        };
+        response.json(view);
       })().catch(next);
     },
   );

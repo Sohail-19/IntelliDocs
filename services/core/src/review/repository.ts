@@ -1,4 +1,5 @@
 import type { Pool } from 'pg';
+import type { ReviewOptions, ReviewOverride } from '../../../../contracts/core-api.v1.js';
 
 import { inTransaction, writeAudit } from '../audit.js';
 import type { AuditContext } from '../audit.js';
@@ -9,7 +10,7 @@ import type { ReviewDecision } from '../obligations.js';
 import { changeAssignment } from '../routing/assignments.js';
 import type { PostgresRoutingService } from '../routing/service.js';
 
-type OwnerSelection = { department?: string; role?: string };
+type OwnerSelection = NonNullable<ReviewOverride['owner']>;
 export type ReviewChange =
   | { action: 'edit'; owner?: OwnerSelection; dueDate?: string | null }
   | { action: 'approve' }
@@ -50,6 +51,18 @@ export class ObligationReviewRepository {
       { status: 'needs_review', ...(docId === undefined ? {} : { doc_id: docId }) },
       orgId,
     );
+  }
+
+  options(orgSlug: string): ReviewOptions | undefined {
+    const config = this.configs.get(orgSlug);
+    if (!config) return undefined;
+    return {
+      departments: config.departments,
+      roles: Object.entries(config.roles ?? {}).map(([name, role]) => ({
+        name,
+        department: role.department ?? null,
+      })),
+    };
   }
 
   async change(docId: string, obligationId: string, change: ReviewChange, audit: AuditContext) {

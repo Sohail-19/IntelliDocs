@@ -10,10 +10,19 @@ Node/Express/TypeScript service for platform orchestration and integration with 
 | `POST /api/auth/register` | Bootstrap token for the first account, then `users:register` |
 | `POST /api/auth/login` | Organization, email, and password |
 | `POST /api/auth/refresh` | Current refresh token |
+| `GET /api/auth/me` | Valid access token |
+| `POST /api/auth/logout` | Current refresh token |
 | `PUT /api/users/:id/roles` | `users:roles` |
+| `GET /api/users`, `PATCH /api/users/:id` | `users:roles` |
+| `GET /api/organisation` | `org:read` |
 | `POST /v1/upload` | `documents:upload` |
+| `GET /api/documents` | `documents:upload` |
+| `GET /api/documents/upload-options` | `documents:upload` |
+| `GET /api/documents/:id` | `documents:upload` |
 | `POST /api/documents/:id/index` | `documents:upload` |
 | `GET /api/search` | `documents:search` |
+| `GET /api/search/options` | `documents:search` or `documents:answer` |
+| `GET /api/documents/:id/source` | Search or answer permission, visible task, or pending review access |
 | `GET /api/answer` | `documents:answer` |
 | `GET /api/obligations` | `obligations:read` |
 | `GET /api/documents/:id/obligations` | `obligations:read` |
@@ -22,6 +31,7 @@ Node/Express/TypeScript service for platform orchestration and integration with 
 | `PATCH /api/documents/:id/obligations/:obligation_id/assignment` | `obligations:assign` |
 | `POST /api/documents/:id/obligations/:obligation_id/route` | `obligations:assign` |
 | `GET /api/obligations/review` | `obligations:review` |
+| `GET /api/obligations/review/options` | `obligations:review` |
 | `PATCH /api/documents/:id/obligations/:obligation_id/review` | `obligations:review` |
 | `POST /api/documents/:id/obligations/:obligation_id/review/approve` | `obligations:review` |
 | `POST /api/documents/:id/obligations/:obligation_id/review/reject` | `obligations:review` |
@@ -38,7 +48,7 @@ grants in the bundled example org.
 | --- | --- |
 | `documents:search`, `documents:answer`, `obligations:read`, `tasks:read` | `admin`, `manager`, `officer`, `finance_officer`, `viewer` |
 | `documents:upload`, `tasks:transition` | `admin`, `manager`, `officer`, `finance_officer` |
-| `audit:read`, `obligations:extract`, `obligations:status`, `obligations:assign`, `obligations:review` | `admin`, `manager` |
+| `audit:read`, `org:read`, `obligations:extract`, `obligations:status`, `obligations:assign`, `obligations:review` | `admin`, `manager` |
 | `users:register`, `users:roles` | `admin` |
 
 ## Authentication
@@ -60,12 +70,32 @@ enabled org defines its `access` settings and role permissions in its YAML.
 - `POST /api/auth/refresh` takes `refresh_token` and returns a replacement pair.
   Save the replacement before making another refresh request. The submitted
   token can be used only once.
+- `GET /api/auth/me` returns the signed-in user's ID, organization ID, roles,
+  and effective permissions for the supplied bearer token.
+- `POST /api/auth/logout` takes `refresh_token`, revokes the corresponding
+  refresh session, and returns 204. Issued access tokens expire on their
+  normal short lifetime.
+
+Set `CORE_CORS_ORIGINS` to the comma-separated browser origins allowed to
+call core from web. An empty allowlist permits same-origin browser requests.
 
 Use `Authorization: Bearer <access_token>` on document and obligation routes.
 Access tokens default to 900 seconds and refresh tokens to seven days. Override
 these with `AUTH_ACCESS_TTL_SECONDS` and `AUTH_REFRESH_TTL_SECONDS`. Auth
 routes share a per-IP, per-process limit set by `AUTH_RATE_LIMIT_PER_MINUTE`
 (default 15). Serve core over HTTPS when clients connect over a network.
+
+## User and organisation oversight
+
+`GET /api/users` lists active and inactive accounts in the caller's org
+with the configured role and department options. Use `PATCH /api/users/:id`
+with `{"department":"finance"}` or `{"department":null}` to change or clear
+membership. Send `{"active":false}` to deactivate an account and revoke its
+sessions. The existing role endpoint replaces the assigned role set. Core
+requires at least one active account with user administration permission.
+
+`GET /api/organisation` returns the loaded languages, OCR engine, departments,
+document types, and routing policy and rules for the caller's org.
 
 Uploads use the authenticated organization. Searches, answers, and obligation
 reads are confined to it. Previously stored documents without a trusted
@@ -74,6 +104,13 @@ again under the intended organization to make them available. Legacy user rows
 are retained as inactive accounts.
 
 ## Documents
+
+`GET /api/documents` lists the authenticated organization's documents.
+`GET /api/documents/:id` returns metadata and index and extraction status
+for one document. New uploads store department, document date, MIME type,
+detected page languages, and page count. Older rows can have unknown
+metadata. `GET /api/documents/upload-options` returns the organization's
+departments, document types, configured defaults, and `MAX_UPLOAD_BYTES`.
 
 `POST /v1/upload` accepts multipart `file` and optional `org_id`, `department`,
 `doc_type`, and `doc_date` (YYYY-MM-DD). It forwards them through the OpenAPI-derived
@@ -132,6 +169,16 @@ the Answer contract and rejects unverified claims, missing citations, or answer
 text outside the verified claim list. Valid abstentions pass through. Invalid
 input returns 422; unavailable intelligence or invalid upstream output returns
 502. Verification cannot be disabled through this route.
+
+`GET /api/search/options` returns the authenticated organization's
+department, document type, and language filters. Search and answer citations
+can include page-local boxes for blocks that intersect the cited span.
+`GET /api/documents/:id/source` streams an original PDF from intelligence
+after checking the document belongs to the authenticated organization.
+Accounts with task-only access can open sources for assignments visible to
+them. Reviewers can open sources for pending obligations in their
+organization. For non-PDF sources the route returns 415 and the viewer shows
+the cited page and quote.
 
 After `POST /v1/upload` indexes a document or attachment, core runs obligation
 extraction and stores its results with an audit entry. Apply migrations before
@@ -199,6 +246,8 @@ The response includes the current owner and deadline alongside
 `extracted_owner`, `extracted_deadline`, and `extracted_status`. When the
 extractor supplies `confidence_breakdown`, the response shows the individual
 evidence contributions stored with the original confidence score.
+`GET /api/obligations/review/options` returns the organization's departments
+and roles, including each role's department when configured.
 
 Use the review endpoint for a document and obligation to save an owner,
 a due date, or both. For example, send
@@ -222,9 +271,10 @@ Apply the task workflow migration before starting core. Assigned obligations
 enter the feed as `open`. Task status stays separate from extraction status
 and survives re-extraction or reassignment of the same obligation.
 
-`GET /api/tasks` requires `tasks:read` and returns `{ "tasks": [...] }`.
-Each task includes its ID, obligation and document IDs, action, resolved due
-date, assignment, and source citations. The feed sorts by due date ascending,
+`GET /api/tasks` requires `tasks:read` and returns `tasks` and
+`available_scopes`. Each task includes its ID, obligation and document IDs,
+action, assignee or queue name, resolved due date, overdue flag, permitted
+user transitions, and source citations. The feed sorts by due date ascending,
 with undated tasks last. Filter by `status`, `doc_id`, or inclusive calendar
 dates `due_from` and `due_to` in YYYY-MM-DD. All visible assignments appear
 by default. Use `scope=mine` for directly assigned tasks and regular role
@@ -268,7 +318,7 @@ when the migration can recover that ownership.
 
 `GET /api/audit` requires the org's `audit:read` permission, granted to admins
 and managers in the example config. It returns `entries` and `next_cursor`,
-newest audit ID first. Optional filters are `entity_type`, `entity_id`,
+newest audit ID first. Optional filters are `action`, `entity_type`, `entity_id`,
 `actor_user_id` (numeric ID or `system`), and inclusive UTC calendar dates
 `from` and `to` in YYYY-MM-DD. The `limit` defaults to 25 and accepts up to
 100. Pass `next_cursor` as `before_id` for the next page.
@@ -285,6 +335,7 @@ The following explicit changes are audited:
   The user must be active and in the same org.
 - `PUT /api/users/:id/roles` takes `{"roles":["viewer"]}` and replaces the
   account's roles. The caller needs `users:roles` in the same org.
+- `PATCH /api/users/:id` records a department change or deactivation.
 
 The database transaction covers core state and its audit event. Intelligence
 calls run outside that transaction, so a core write failure can leave an
