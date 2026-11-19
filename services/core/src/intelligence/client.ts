@@ -38,6 +38,9 @@ export type ObligationDeadline = Schemas['obligation-deadline.v1.schema'];
 export type ExtractionStats = Schemas['extraction-stats.v1.schema'];
 export type ExtractionResult = Schemas['extraction-result.v1.schema'];
 export type ExtractObligationsResponse = Schemas['extract-obligations-response.v1.schema'];
+export type DetectRelationsRequest = Schemas['detect-relations-request.v1.schema'];
+export type DocumentRelation = Schemas['document-relation.v1.schema'];
+export type RelationResult = Schemas['relation-result.v1.schema'];
 
 export class IntelligenceError extends Error {
   constructor(public readonly status: number) {
@@ -110,6 +113,10 @@ export class IntelligenceClient {
 
   extractObligations(request: ExtractObligationsRequest): Promise<ExtractionResult> {
     return this.post('/v1/extract-obligations', request);
+  }
+
+  detectRelations(request: DetectRelationsRequest): Promise<RelationResult> {
+    return this.post('/v1/detect-relations', request);
   }
 
   private async post<TRequest, TResponse>(path: string, body: TRequest): Promise<TResponse> {

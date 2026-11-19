@@ -8,6 +8,8 @@ import { principal } from './auth/routes.js';
 import type { Guard } from './auth/routes.js';
 import { IntelligenceError } from './intelligence/client.js';
 import type { Answer, AnswerRequest, IntelligenceClient } from './intelligence/client.js';
+import { authorityWarnings } from './relations/staleness.js';
+import type { PostgresRelationRepository } from './relations/repository.js';
 
 const ajv = new Ajv2020({ strict: true });
 addFormats.default(ajv);
@@ -18,7 +20,11 @@ for (const name of ['citation', 'claim', 'answer', 'answer-request']) {
 const validateRequest = ajv.compile<AnswerRequest>({ $ref: 'answer-request.v1.schema.json' });
 const validateResponse = ajv.compile<Answer>({ $ref: 'answer.v1.schema.json' });
 
-export function answerRouter(answer: IntelligenceClient['answer'], guard: Guard): Router {
+export function answerRouter(
+  answer: IntelligenceClient['answer'],
+  guard: Guard,
+  relations?: Pick<PostgresRelationRepository, 'confirmedChanges'>,
+): Router {
   const router = Router();
   router.get('/api/answer', guard('documents:answer'), (request, response) => {
     const { query, language, top_k, filters, ...flatFilters } = request.query;
@@ -53,9 +59,10 @@ export function answerRouter(answer: IntelligenceClient['answer'], guard: Guard)
     }
     void (async () => {
       try {
+        const actor = principal(response);
         const result: unknown = await answer({
           ...body,
-          filters: { ...body.filters, org_id: principal(response).orgSlug },
+          filters: { ...body.filters, org_id: actor.orgSlug },
         });
         if (
           !validateResponse(result) ||
@@ -70,7 +77,30 @@ export function answerRouter(answer: IntelligenceClient['answer'], guard: Guard)
           response.status(502).json({ error: 'Invalid intelligence answer response' });
           return;
         }
-        response.json(result);
+        const citations = result.claims.flatMap((claim) => claim.citations);
+        const changes = (await relations?.confirmedChanges(actor.orgId, citations)) ?? [];
+        const warnings = authorityWarnings(changes, citations);
+        response.set('Cache-Control', 'no-store');
+        if (!warnings.length) {
+          response.json(result);
+          return;
+        }
+        // An answer sentence can combine several sources. Discard the claim
+        // if any of its cited evidence is stale.
+        const claims = result.claims.filter(
+          (claim) => !authorityWarnings(changes, claim.citations).length,
+        );
+        response.json({
+          ...result,
+          claims,
+          answer_text: claims.map((claim) => claim.text).join('\n'),
+          abstained: claims.length === 0,
+          abstain_reason: claims.length
+            ? ''
+            : 'The available answer relied on instructions changed by a newer document.',
+          stale_sources: true,
+          authority_warnings: warnings,
+        });
       } catch (error) {
         if (error instanceof IntelligenceError && error.status === 422) {
           response.status(422).json({ error: 'Intelligence rejected the answer query or filters' });

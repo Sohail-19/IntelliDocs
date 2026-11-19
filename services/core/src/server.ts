@@ -9,6 +9,7 @@ import { PostgresDocumentRepository } from './documents.js';
 import { IntelligenceClient } from './intelligence/client.js';
 import { PostgresObligationRepository } from './obligations.js';
 import { ObligationReviewRepository } from './review/repository.js';
+import { PostgresRelationRepository } from './relations/repository.js';
 import { configuredRouting } from './routing/config.js';
 import { PostgresRoutingService } from './routing/service.js';
 import { scheduleTaskJob, TaskJob, taskIntervalMs } from './tasks/job.js';
@@ -59,6 +60,7 @@ async function start(): Promise<void> {
         routing,
         tasks: new TaskRepository(pool, reviewRoles),
         reviews: new ObligationReviewRepository(pool, routing, orgConfigs),
+        relations: new PostgresRelationRepository(pool),
         audit: new PostgresAuditReader(pool),
       },
       { auth },

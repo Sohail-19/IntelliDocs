@@ -32,7 +32,13 @@ export function sourceRouter(
   });
   if (pdfSource) {
     const sourceAccess = canReadSource
-      ? guard('documents:search', 'documents:answer', 'tasks:read', 'obligations:review')
+      ? guard(
+          'documents:search',
+          'documents:answer',
+          'tasks:read',
+          'obligations:review',
+          'relations:review',
+        )
       : access;
     router.get('/api/documents/:id/source', sourceAccess, (request, response) => {
       const id = request.params.id;

@@ -24,10 +24,13 @@ export function createTestDatabase() {
     release() {},
   };
   const pool = { ...connection, connect: () => Promise.resolve(connection) } as unknown as Pool;
-  async function apply(migrate: (builder: MigrationBuilder) => void): Promise<void> {
-    const builder = new Builder({}, {}, false, console);
-    migrate(builder);
-    await db.exec(builder.getSql());
-  }
+  const apply = async (migrate: (builder: MigrationBuilder) => void) =>
+    db.exec(migrationSql(migrate));
   return { db, pool, apply };
+}
+
+export function migrationSql(migrate: (builder: MigrationBuilder) => void) {
+  const builder = new Builder({}, {}, false, console);
+  migrate(builder);
+  return builder.getSql();
 }

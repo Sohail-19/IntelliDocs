@@ -267,3 +267,42 @@ it('restores the effective review values while preserving an unsaved edit if the
   expect(screen.getByText('The filing office')).toBeInTheDocument();
   expect(department).toHaveValue('Legal');
 });
+
+it.each([
+  ['Keep task', { decision: 'keep', reason: 'Reviewed the amendment' }],
+  ['Update task', { decision: 'update', reason: 'Reviewed the amendment', action: 'File weekly' }],
+  ['Close task', { decision: 'close', reason: 'Reviewed the amendment' }],
+])('saves the stale-task decision %s with its reason', async (label, change) => {
+  let pending = true;
+  const user = await show(
+    '/tasks',
+    ['tasks:read', 'tasks:transition', 'relations:review'],
+    (url, init) => {
+      if (url === '/api/tasks') {
+        return Response.json({
+          tasks: pending ? [{ ...task, stale: true, stale_relation_ids: ['r1'] }] : [],
+          available_scopes: ['mine'],
+        });
+      }
+      expect(url).toBe('/api/relations/r1/stale-obligations/7');
+      expect(init).toMatchObject({ method: 'PATCH', body: JSON.stringify(change) });
+      pending = false;
+      return new Response(null, { status: 204 });
+    },
+  );
+  expect(await screen.findByText('Stale · manager decision required')).toBeVisible();
+  expect(screen.queryByRole('button', { name: 'Acknowledge' })).not.toBeInTheDocument();
+  expect(screen.getByRole('link', { name: 'View relation' })).toHaveAttribute(
+    'href',
+    '/relations/r1',
+  );
+  await user.click(screen.getByRole('button', { name: label }));
+  expect(screen.getByRole('button', { name: label })).toBeDisabled();
+  await user.type(screen.getByLabelText('Decision reason'), change.reason);
+  if ('action' in change && change.action) {
+    await user.clear(screen.getByLabelText('Replacement action'));
+    await user.type(screen.getByLabelText('Replacement action'), change.action);
+  }
+  await user.click(screen.getByRole('button', { name: label }));
+  expect(await screen.findByText('No tasks in this queue')).toBeVisible();
+});

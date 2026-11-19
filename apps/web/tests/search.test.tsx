@@ -48,7 +48,7 @@ const citation: Citation = {
   clause_number: '4.2',
 };
 
-async function show(answer: Answer, pdfStatus = 200) {
+async function show(answer: Answer, pdfStatus = 200, stale = false) {
   const requests: URL[] = [];
   const fetcher = vi.fn<typeof fetch>((input) => {
     if (typeof input !== 'string') throw new Error('Expected an API URL');
@@ -71,6 +71,7 @@ async function show(answer: Answer, pdfStatus = 200) {
                 chunk: { id: 'i', text: 'The report must be filed on Friday.' },
                 score: 0.895,
                 citations: [citation],
+                ...(stale ? { stale, authority_warnings: answer.authority_warnings } : {}),
               },
             ],
           }),
@@ -198,4 +199,39 @@ it('shows the matching chunk, score, and page with org-configured filters', asyn
   const params = requests.find(({ pathname }) => pathname === '/api/search')?.searchParams;
   expect(params?.get('filters[department]')).toBe('Legal');
   expect(params?.get('filters[doc_type]')).toBe('Circular');
+});
+
+it('shows the newer source link in search and alongside an abstained answer', async () => {
+  const { user } = await show(
+    {
+      ...withheld,
+      stale_sources: true,
+      authority_warnings: [
+        {
+          doc_id: citation.doc_id,
+          newer_doc_id: 'newer-doc',
+          relation_id: 'r1',
+          status: 'superseded',
+          message: 'This document is superseded.',
+        },
+      ],
+    },
+    200,
+    true,
+  );
+  await user.type(await screen.findByRole('searchbox', { name: 'Search query' }), 'report');
+  await user.click(screen.getByRole('button', { name: 'Search documents' }));
+  expect(await screen.findByText('Stale source warning')).toBeVisible();
+  expect(screen.getByRole('link', { name: 'View newer document' })).toHaveAttribute(
+    'href',
+    '/documents/newer-doc',
+  );
+  await user.click(screen.getByRole('button', { name: 'Ask' }));
+  await user.click(screen.getByRole('button', { name: 'Ask documents' }));
+  expect(await screen.findByRole('heading', { name: 'The answer was withheld' })).toBeVisible();
+  expect(screen.getByText('Stale source warning')).toBeVisible();
+  expect(screen.getByRole('link', { name: 'View newer document' })).toHaveAttribute(
+    'href',
+    '/documents/newer-doc',
+  );
 });

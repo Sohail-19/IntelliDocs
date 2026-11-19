@@ -223,3 +223,59 @@ and per-document scores. Existing-index runs also record the model, extraction
 limits, and org config fingerprints. Reports default to ignored
 `eval/results/extraction_<UTC-date>.json`. Use `--output` to choose a report path
 or `--overwrite` to replace an existing report.
+
+## Document relation evaluation
+
+The [sample gold set](relations/sample.jsonl) is UTF-8 JSONL with the newer
+and older document IDs in that order. Give each relation its expected
+`relation_type` (`supersedes`, `amends`, `withdraws`, `conflicts_with`, or
+`references`), `scope` (`whole_document` or `clauses`), and one-based
+`source_pages` and `target_pages` containing the evidence. Combine pages for
+multiple instances of the same type and scope in a pair. Explicitly label
+unrelated pairs with `null` type and scope and empty page lists. Include the
+plausible negative pairs for each evaluated newer document. The runner requires
+an explicit label for every pair predicted in the run.
+
+```jsonl
+{"source_doc_id":"amendment-new","target_doc_id":"amendment-old","relation_type":"amends","scope":"clauses","source_pages":[1],"target_pages":[1]}
+{"source_doc_id":"unrelated-new","target_doc_id":"unrelated-old","relation_type":null,"scope":null,"source_pages":[],"target_pages":[]}
+```
+
+- **Precision, recall and F1** match on the directed pair, type and scope,
+  overall and per relation type. Multiple predictions of the same tuple count
+  once for classification. Dismissed relations are excluded.
+- **False supersession rate** counts older documents predicted to be fully
+  superseded or withdrawn divided by older documents with no gold full
+  supersession or withdrawal. It counts each older document once, including
+  a partially amended document if it was wrongly flagged in full. Default
+  scoring treats proposals as potential decisions. The report also gives the
+  rate for confirmed decisions alone. Partial amendments have clause-level
+  effects and are scored in the relation-type metrics.
+- **Citation faithfulness** checks the literal quote against the canonical
+  character span and reported page range in the correct document. It counts
+  every emitted citation from both sides. Predictions missing evidence on
+  either side are counted separately. **Gold evidence page coverage** measures
+  the share of gold relations whose labeled pages on both sides are covered by
+  faithful citations from a matching prediction.
+
+Run the bundled synthetic example from the repo root.
+
+```sh
+uv run --project services/intelligence --no-sync python -m eval.relations.evaluate_relations
+```
+
+The fixture deliberately omits a reference and proposes a false supersession
+with one incorrect citation span. Its potential false supersession rate is
+25%, its confirmed rate is 0%, and citation faithfulness is 90% (9 of 10).
+These scores exercise the evaluator with hand-authored outputs.
+
+For real snapshots, pass `--gold PATH --predictions PATH --sources PATH`.
+Predictions are v1 `RelationResult` JSONL with one row per newer document,
+including an empty `relations` array when none were found. Sources are v1
+`ParseResult` JSONL for both sides. Use `--confirmed-only` to score reviewed
+output. To run detection directly, pass `--gold PATH --storage-root PATH`
+with the configured index and LLM environment. Keep the index and parsed
+sources fixed across comparisons. Reports save raw counts and available input
+hashes to ignored `eval/results/relations_<UTC-date>.json`. Undefined rates
+are `null` in JSON and `n/a` in the table. Use `--output PATH` or `--overwrite`
+to control the report destination.

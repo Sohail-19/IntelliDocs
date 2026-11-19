@@ -217,6 +217,7 @@ describe('obligation repository', () => {
       .mockResolvedValueOnce({})
       .mockResolvedValueOnce({ rows: [{ id: 10 }] })
       .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({ rows: [] })
       .mockResolvedValueOnce({ rows: [{ id: 100, assigned_user_id: null }] })
       .mockResolvedValue({});
     const connection = { query, release: vi.fn() };
@@ -227,6 +228,7 @@ describe('obligation repository', () => {
       'BEGIN',
       expect.stringContaining('SELECT d.id, d.extraction_status'),
       expect.stringContaining('SELECT id AS row_id'),
+      expect.stringContaining('FROM document_relations'),
       expect.stringContaining('INSERT INTO obligations'),
       expect.stringContaining('UPDATE documents'),
       expect.stringContaining('INSERT INTO audit_log'),
@@ -240,6 +242,7 @@ describe('obligation repository', () => {
       .fn()
       .mockResolvedValueOnce({})
       .mockResolvedValueOnce({ rows: [{ id: 10 }] })
+      .mockResolvedValueOnce({ rows: [] })
       .mockResolvedValueOnce({ rows: [] })
       .mockRejectedValueOnce(new Error('insert failed'));
     const connection = { query, release: vi.fn() };

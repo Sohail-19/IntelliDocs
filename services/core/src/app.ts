@@ -17,6 +17,9 @@ import { organisationRouter } from './organisation.js';
 import type { ObligationRepository } from './obligations.js';
 import type { ObligationReviewRepository } from './review/repository.js';
 import { reviewRouter } from './review/routes.js';
+import { runDetection } from './relations/detection.js';
+import type { PostgresRelationRepository } from './relations/repository.js';
+import { relationRouter } from './relations/routes.js';
 import { routingRouter } from './routing/routes.js';
 import type { PostgresRoutingService } from './routing/service.js';
 import { searchRouter } from './search.js';
@@ -28,7 +31,10 @@ import type { UploadDependencies } from './upload.js';
 
 type AppDependencies = UploadDependencies & {
   intelligence: Partial<
-    Pick<IntelligenceClient, 'search' | 'answer' | 'extractObligations' | 'pdfSource'>
+    Pick<
+      IntelligenceClient,
+      'search' | 'answer' | 'extractObligations' | 'pdfSource' | 'detectRelations'
+    >
   >;
   obligations?: ObligationRepository;
   audit?: AuditReader;
@@ -36,6 +42,7 @@ type AppDependencies = UploadDependencies & {
   routing?: PostgresRoutingService;
   tasks?: TaskRepository;
   reviews?: ObligationReviewRepository;
+  relations?: PostgresRelationRepository;
   documentBrowser?: DocumentBrowser;
 };
 
@@ -71,9 +78,11 @@ export function createApp(
           dependencies.tasks,
           guard,
           auth ? (actor) => auth.allows(actor, 'tasks:transition') : undefined,
+          auth ? (actor) => auth.allows(actor, 'relations:review') : undefined,
         ),
       );
     if (dependencies.reviews) app.use(reviewRouter(dependencies.reviews, guard));
+    if (dependencies.relations) app.use(relationRouter(dependencies.relations, guard));
     if (dependencies.documentBrowser) {
       app.use(
         documentRouter(dependencies.documentBrowser, guard, uploadLimit(dependencies.maxBytes)),
@@ -88,6 +97,11 @@ export function createApp(
                 if (
                   auth.allows(actor, 'documents:search') ||
                   auth.allows(actor, 'documents:answer')
+                )
+                  return true;
+                if (
+                  auth.allows(actor, 'relations:review') &&
+                  (await dependencies.relations?.hasDocument(actor.orgId, id))
                 )
                   return true;
                 if (
@@ -113,19 +127,26 @@ export function createApp(
           )
         : undefined;
     const { obligations } = dependencies;
+    const detection =
+      dependencies.relations && intelligence.detectRelations
+        ? runDetection(dependencies.relations, intelligence.detectRelations.bind(intelligence))
+        : undefined;
     app.use(
       uploadRouter(
         dependencies,
         guard,
         extraction,
         obligations && (async (id, orgId) => Boolean(await obligations.documentState(id, orgId))),
+        detection,
       ),
     );
     if (dependencies.obligations && extraction) {
-      app.use(obligationRouter(dependencies.obligations, extraction, guard));
+      app.use(obligationRouter(dependencies.obligations, extraction, guard, detection));
     }
-    if (intelligence.search) app.use(searchRouter(intelligence.search.bind(intelligence), guard));
-    if (intelligence.answer) app.use(answerRouter(intelligence.answer.bind(intelligence), guard));
+    if (intelligence.search)
+      app.use(searchRouter(intelligence.search.bind(intelligence), guard, dependencies.relations));
+    if (intelligence.answer)
+      app.use(answerRouter(intelligence.answer.bind(intelligence), guard, dependencies.relations));
   }
   app.use(
     (

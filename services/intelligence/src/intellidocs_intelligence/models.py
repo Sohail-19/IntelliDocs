@@ -1,10 +1,12 @@
 """Pydantic models mirroring the versioned schemas in /contracts."""
 
+import re
 from datetime import date, datetime
 from math import fsum, isclose
 from typing import Annotated, Literal, Self
 
 from pydantic import (
+    AwareDatetime,
     BaseModel,
     ConfigDict,
     Field,
@@ -19,6 +21,10 @@ from pydantic import (
 NonEmptyString = Annotated[str, Field(min_length=1)]
 LanguageCode = Annotated[str, Field(min_length=2)]
 ObligationType = Literal["duty", "prohibition", "reporting", "payment", "review", "other"]
+ChangeRelationType = Literal["supersedes", "amends", "withdraws"]
+DocumentRelationType = Literal["supersedes", "amends", "withdraws", "conflicts_with", "references"]
+RelationScope = Literal["whole_document", "clauses"]
+ConfidenceContribution = Annotated[FiniteFloat, Field(ge=0, le=1, strict=True)]
 
 
 class ContractModel(BaseModel):
@@ -151,6 +157,77 @@ class Citation(ContractModel):
     boxes: list[CitationBox] | None = None
 
 
+class DetectRelationsRequest(ContractModel):
+    doc_id: NonEmptyString
+
+
+class RelationConfidenceBreakdown(ContractModel):
+    explicit_reference: ConfidenceContribution
+    both_quotes_verified: ConfidenceContribution
+    date_order_consistent: ConfidenceContribution
+    recognized_cue: ConfidenceContribution
+
+    @property
+    def total(self) -> float:
+        return fsum((
+            self.explicit_reference, self.both_quotes_verified,
+            self.date_order_consistent, self.recognized_cue,
+        ))
+
+
+class DocumentRelation(ContractModel):
+    id: NonEmptyString
+    source_doc_id: NonEmptyString
+    target_doc_id: NonEmptyString
+    relation_type: DocumentRelationType
+    scope: RelationScope
+    source_citations: list[Citation]
+    target_citations: list[Citation]
+    confidence: FiniteFloat = Field(ge=0, le=1, strict=True)
+    confidence_breakdown: RelationConfidenceBreakdown | None = None
+    status: Literal["proposed", "confirmed", "dismissed"]
+    needs_review: StrictBool | None = None
+    detected_by: NonEmptyString
+    created_at: AwareDatetime
+
+    @field_validator("created_at", mode="before")
+    @classmethod
+    def explicit_timestamp(cls, value: object) -> datetime:
+        if isinstance(value, datetime):
+            return value
+        if isinstance(value, str) and re.fullmatch(
+            r"[0-9]{4}-[0-9]{2}-[0-9]{2}[Tt][0-9]{2}:[0-9]{2}:[0-9]{2}"
+            r"(?:\.[0-9]+)?(?:[Zz]|[+-](?:[01][0-9]|2[0-3]):[0-5][0-9])",
+            value,
+        ):
+            return datetime.fromisoformat(value.upper().replace("Z", "+00:00"))
+        raise ValueError("created_at must be an RFC 3339 timestamp with an explicit offset")
+
+    @model_validator(mode="after")
+    def check_evidence(self) -> Self:
+        if self.status == "confirmed" and (
+            self.needs_review or not self.source_citations or not self.target_citations
+        ):
+            raise ValueError(
+                "Confirmed relations require citations on both sides and no pending review"
+            )
+        if any(citation.doc_id != self.source_doc_id for citation in self.source_citations):
+            raise ValueError("Source citations must belong to the source document")
+        if any(citation.doc_id != self.target_doc_id for citation in self.target_citations):
+            raise ValueError("Target citations must belong to the target document")
+        if self.confidence_breakdown is not None and not isclose(
+            self.confidence, self.confidence_breakdown.total, abs_tol=1e-9
+        ):
+            raise ValueError("Relation confidence must equal its evidence contributions")
+        return self
+
+
+class RelationResult(ContractModel):
+    doc_id: NonEmptyString
+    relations: list[DocumentRelation]
+    warnings: list[str]
+
+
 class ObligationOwner(ContractModel):
     raw_text: str
     resolved_department: NonEmptyString | None
@@ -169,9 +246,6 @@ class ObligationDeadline(ContractModel):
     @classmethod
     def calendar_date(cls, value: object) -> object:
         return UploadMetadata.explicit_date(value)
-
-
-ConfidenceContribution = Annotated[FiniteFloat, Field(ge=0, le=1, strict=True)]
 
 
 class ConfidenceBreakdown(ContractModel):
@@ -336,6 +410,15 @@ class ObligationDetectionRules(ContractModel):
     absolute_deadline_wrappers: list[NonEmptyString] = Field(default_factory=list)
 
 
+class RelationDetectionRules(ContractModel):
+    reference_cues: dict[str, list[RoutingText]] = Field(default_factory=dict)
+    change_cues: dict[str, dict[ChangeRelationType, list[RoutingText]]] = Field(
+        default_factory=dict
+    )
+    nonoperative_cues: dict[str, list[RoutingText]] = Field(default_factory=dict)
+    related_document_types: dict[str, list[NonEmptyString]] = Field(default_factory=dict)
+
+
 class OrgRole(ContractModel):
     department: NonEmptyString | None = None
     aliases: list[NonEmptyString] = Field(default_factory=list)
@@ -357,6 +440,7 @@ class OrgConfig(ContractModel):
     routing_policy: RoutingPolicy | None = None
     routing_rules: list[RoutingRule | LegacyRoutingRule]
     obligation_detection: dict[str, ObligationDetectionRules] = Field(default_factory=dict)
+    relation_detection: RelationDetectionRules = Field(default_factory=RelationDetectionRules)
     department_aliases: dict[str, list[NonEmptyString]] = Field(default_factory=dict)
     roles: dict[str, OrgRole] = Field(default_factory=dict)
 

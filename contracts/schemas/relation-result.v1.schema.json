@@ -1,0 +1,13 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "relation-result.v1.schema.json",
+  "title": "RelationResult v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["doc_id", "relations", "warnings"],
+  "properties": {
+    "doc_id": { "type": "string", "minLength": 1, "description": "ID of the document submitted for detection." },
+    "relations": { "type": "array", "items": { "$ref": "document-relation.v1.schema.json" } },
+    "warnings": { "type": "array", "items": { "type": "string" } }
+  }
+}

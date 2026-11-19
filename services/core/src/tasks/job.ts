@@ -4,6 +4,7 @@ import type { Pool } from 'pg';
 
 import { inTransaction, writeAudit } from '../audit.js';
 import { normalizedDeadline, resolvedDeadline } from '../obligation-values.js';
+import { hasPendingStaleness, pendingStale } from '../relations/staleness.js';
 import { changeAssignment } from '../routing/assignments.js';
 import type { Assignment } from '../routing/assignments.js';
 import { lockTask, recordTaskTransition } from './repository.js';
@@ -26,7 +27,9 @@ export class TaskJob {
         'SELECT o.id, d.org_id FROM obligations o JOIN documents d ON d.id = o.document_id ' +
           'JOIN organizations org ON org.id = d.org_id ' +
           "JOIN assignments a ON a.obligation_id = o.id AND a.status = 'active' " +
-          'WHERE o.retired_at IS NULL AND o.external_id IS NOT NULL AND o.id > $4 ' +
+          'WHERE o.retired_at IS NULL AND o.external_id IS NOT NULL AND o.id > $4 AND NOT ' +
+          pendingStale +
+          ' ' +
           "AND ((o.task_status = 'open' AND " +
           resolvedDeadline +
           ' AND ' +
@@ -50,7 +53,7 @@ export class TaskJob {
     await inTransaction(this.pool, async (client) => {
       // Recheck task and assignment in the transaction after taking the obligation lock.
       const task = await lockTask(client, id, orgId, true);
-      if (!task) return;
+      if (!task || (await hasPendingStaleness(client, id))) return;
       const { rows: assignments } = await client.query<Assignment>(
         "SELECT * FROM assignments WHERE obligation_id = $1 AND status = 'active'",
         [id],

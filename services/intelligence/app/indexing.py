@@ -7,6 +7,7 @@ from collections.abc import Callable, Iterator
 from contextlib import AbstractContextManager, contextmanager
 from dataclasses import asdict
 from datetime import UTC, datetime
+from pathlib import Path
 from typing import Any
 
 from pydantic import TypeAdapter, ValidationError
@@ -107,6 +108,7 @@ class IndexingService:
                 written = self.store.upsert_chunks(
                     chunks[start : start + self.batch_size],
                     embeddings=vectors[start : start + self.batch_size],
+                    document_title=Path(document.filename).stem if start == 0 else None,
                 )
                 if written != len(chunks[start : start + self.batch_size]):
                     raise RuntimeError("Vector store did not acknowledge every chunk")

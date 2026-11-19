@@ -10,7 +10,11 @@ from intellidocs_intelligence.models import Chunk, SearchResult
 class VectorStore(ABC):
     @abstractmethod
     def upsert_chunks(
-        self, chunks: Sequence[Chunk], embeddings: Sequence[Embedding] | None = None
+        self,
+        chunks: Sequence[Chunk],
+        embeddings: Sequence[Embedding] | None = None,
+        *,
+        document_title: str | None = None,
     ) -> int:
         """Persist embedded chunks and return the acknowledged upsert count."""
 

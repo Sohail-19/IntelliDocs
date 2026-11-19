@@ -98,6 +98,10 @@ covered in the [core service README](services/core/README.md).
 | `GET /api/tasks` | `tasks:read` |
 | `PATCH /api/tasks/:id/status` | `tasks:transition` and access to the active assignment |
 | `GET /api/audit` | `audit:read` |
+| `GET /api/relations`, `GET /api/relations/:id` | `relations:review` |
+| `POST /api/relations/:id/confirm`, `POST /api/relations/:id/dismiss` | `relations:review` |
+| `PATCH /api/relations/:id/type` | `relations:review` |
+| `GET /api/relations/:id/stale-obligations`, `PATCH /api/relations/:id/stale-obligations/:obligation_id` | `relations:review` |
 
 ## Roles and permissions
 
@@ -108,7 +112,7 @@ grants in the bundled example org.
 | --- | --- |
 | `documents:search`, `documents:answer`, `obligations:read`, `tasks:read` | `admin`, `manager`, `officer`, `finance_officer`, `viewer` |
 | `documents:upload`, `tasks:transition` | `admin`, `manager`, `officer`, `finance_officer` |
-| `audit:read`, `org:read`, `obligations:extract`, `obligations:status`, `obligations:assign`, `obligations:review` | `admin`, `manager` |
+| `audit:read`, `org:read`, `obligations:extract`, `obligations:status`, `obligations:assign`, `obligations:review`, `relations:review` | `admin`, `manager` |
 | `users:register`, `users:roles` | `admin` |
 
 ## Intelligence API
@@ -122,6 +126,7 @@ grants in the bundled example org.
 | `POST /v1/search` | Retrieve cited document chunks |
 | `POST /v1/answer` | Generate and verify a grounded answer |
 | `POST /v1/extract-obligations` | Extract, verify, and resolve obligations |
+| `POST /v1/detect-relations` | Propose relations with evidence from both documents |
 
 The [intelligence OpenAPI contract](contracts/openapi/intelligence.v1.yaml)
 defines requests and responses.
@@ -143,7 +148,9 @@ dependencies are missing. The script creates its own Compose project and
 database, applies migrations, and supplies an in-network mock LLM plus fake
 embeddings. It registers a temporary admin, uploads a synthetic PDF, verifies
 the highlighted citation in Search, completes the routed task, and checks the
-audit trail. It removes its containers and volumes on exit. The separate
+audit trail. It then uploads an original circular and an amendment, confirms
+the relation, follows the link to the newer document, and sees the original
+task in the stale queue. It removes its containers and volumes on exit. The separate
 **Docker demo** workflow runs the same check and saves screenshots on failure.
 
 The demo uses loopback ports 55173 (web), 53000 (core), 58000 (intelligence),

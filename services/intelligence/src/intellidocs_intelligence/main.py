@@ -10,6 +10,7 @@ from app.answering import AnswerFactory, answerer_from_env
 from app.extraction.service import ExtractionFactory, IndexNotReady, extraction_from_env
 from app.indexing import IndexingFactory, document_tree, indexer_from_env
 from app.ingestion import IngestionService, load_org, select_org_id, storage_from_env
+from app.relations.service import RelationFactory, relations_from_env
 from app.retrieval.filters import InvalidFilter
 from app.search import SearchFactory, search_from_env
 from app.storage import Storage
@@ -17,11 +18,13 @@ from app.storage import Storage
 from .models import (
     Answer,
     AnswerRequest,
+    DetectRelationsRequest,
     ExtractionResult,
     ExtractObligationsRequest,
     IndexRequest,
     IndexResult,
     IngestResponse,
+    RelationResult,
     SearchRequest,
     SearchResponse,
     UploadMetadata,
@@ -47,6 +50,10 @@ def get_extraction_factory(
     storage: Annotated[Storage, Depends(storage_from_env)],
 ) -> ExtractionFactory:
     return lambda: extraction_from_env(storage)
+
+
+def get_relation_factory(storage: Annotated[Storage, Depends(storage_from_env)]) -> RelationFactory:
+    return lambda: relations_from_env(storage)
 
 
 @app.get("/health")
@@ -196,3 +203,22 @@ def extract_obligations(
         raise
     except Exception as error:
         raise HTTPException(503, "Obligation extraction failed") from error
+
+
+@app.post("/v1/detect-relations", response_model=RelationResult, response_model_exclude_none=True)
+def detect_relations(
+    request: DetectRelationsRequest,
+    factory: Annotated[RelationFactory, Depends(get_relation_factory)],
+) -> RelationResult:
+    """Return evidence-checked relation proposals for an indexed document."""
+    try:
+        with factory() as service:
+            return service.detect(request.doc_id)
+    except FileNotFoundError as error:
+        raise HTTPException(404, "Stored document not found") from error
+    except IndexNotReady as error:
+        raise HTTPException(409, str(error)) from error
+    except HTTPException:
+        raise
+    except Exception as error:
+        raise HTTPException(503, "Relation detection failed") from error

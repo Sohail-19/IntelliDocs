@@ -3,6 +3,11 @@ import type { Pool, PoolClient } from 'pg';
 import { inTransaction, writeAudit } from '../audit.js';
 import type { AuditContext } from '../audit.js';
 import { effectiveOwner, normalizedDeadline, resolvedDeadline } from '../obligation-values.js';
+import {
+  effectiveAction,
+  effectiveCitations,
+  hasPendingStaleness,
+} from '../relations/staleness.js';
 import { changeAssignment } from './assignments.js';
 import type { Assignment } from './assignments.js';
 import type { RoutingEngine, RoutingFacts } from './engine.js';
@@ -73,7 +78,7 @@ export class PostgresRoutingService {
     docId: string,
     obligationId: string,
     audit: AuditContext,
-  ): Promise<Assignment | 'not_found' | 'disabled' | 'rejected'> {
+  ): Promise<Assignment | 'not_found' | 'disabled' | 'rejected' | 'stale'> {
     return inTransaction(this.pool, (client) =>
       this.routeStored(client, docId, obligationId, audit),
     );
@@ -84,7 +89,7 @@ export class PostgresRoutingService {
     docId: string,
     obligationId: string,
     audit: AuditContext,
-  ): Promise<Assignment | 'not_found' | 'disabled' | 'rejected'> {
+  ): Promise<Assignment | 'not_found' | 'disabled' | 'rejected' | 'stale'> {
     const { rows } = await client.query<Candidate & { reviewRejected: boolean }>(
       'SELECT o.id AS "rowId", o.external_id AS "externalId", d.external_id AS "docId", ' +
         'org.slug AS "orgSlug", o.obligation_type AS "obligationType", ' +
@@ -93,8 +98,12 @@ export class PostgresRoutingService {
         'COALESCE(' +
         effectiveOwner +
         "->'resolved' = 'true'::jsonb, false) AS \"ownerResolved\", " +
-        'd.doc_type AS "documentType", o.action, o.condition, o.confidence, ' +
-        "CASE WHEN jsonb_array_length(o.citations) > 0 THEN o.status ELSE 'needs_review' END AS status, " +
+        'd.doc_type AS "documentType", ' +
+        effectiveAction +
+        ' AS action, o.condition, o.confidence, ' +
+        'CASE WHEN jsonb_array_length(' +
+        effectiveCitations +
+        ") > 0 THEN o.status ELSE 'needs_review' END AS status, " +
         'COALESCE(o.review_decision = \'approved\', false) AS "humanApproved", ' +
         'COALESCE(o.review_decision = \'rejected\', false) AS "reviewRejected", ' +
         'CASE WHEN ' +
@@ -108,6 +117,7 @@ export class PostgresRoutingService {
     );
     const candidate = rows[0];
     if (!candidate) return 'not_found';
+    if (await hasPendingStaleness(client, candidate.rowId)) return 'stale';
     if (candidate.reviewRejected) return 'rejected';
     const assignment = await this.assign(client, candidate, audit);
     if (!assignment) return 'disabled';

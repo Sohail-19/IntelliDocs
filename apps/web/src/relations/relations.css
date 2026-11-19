@@ -1,0 +1,126 @@
+.relations-page,
+.relation-card,
+.relation-review,
+.relation-decision-form {
+  display: grid;
+  gap: 1rem;
+}
+
+.relation-card-heading {
+  display: flex;
+  justify-content: space-between;
+  align-items: start;
+  gap: 1rem;
+}
+
+.relation-card-heading p {
+  margin: 0.25rem 0 0;
+}
+
+.relation-card-heading .work-status {
+  text-transform: capitalize;
+}
+
+.relation-passages {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1rem;
+}
+
+.relation-passage {
+  padding: 1rem;
+  border: 1px solid #dce4e9;
+  border-radius: 0.75rem;
+  background: #f8fafb;
+  overflow-wrap: anywhere;
+}
+
+.relation-passage h3,
+.relation-passage p {
+  margin: 0 0 0.5rem;
+}
+
+.relation-filename {
+  font-weight: 650;
+}
+
+.relation-passage blockquote {
+  margin: 0.875rem 0;
+  white-space: pre-wrap;
+}
+
+.relation-confidence {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem 1.5rem;
+  margin: 0;
+}
+
+.relation-confidence dt {
+  font-size: 0.875rem;
+}
+
+.relation-confidence dd {
+  margin: 0;
+  font-weight: 700;
+}
+
+.relation-type-form {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: end;
+  gap: 0.75rem;
+}
+
+.relation-decision-form {
+  max-width: 32rem;
+}
+
+.relations-page .field :is(select, textarea) {
+  min-height: 2.5rem;
+  padding: 0.5rem 0.75rem;
+  border: 1px solid var(--line);
+  border-radius: 0.5rem;
+  background: white;
+}
+
+.relations-page .work-tabs button[aria-pressed='true'] {
+  border-color: currentColor;
+  font-weight: 700;
+}
+
+.authority-warning {
+  margin: 0;
+  padding: 0.75rem 1rem;
+  border: 1px solid #e6c692;
+  border-radius: 0.5rem;
+  background: #fff5e4;
+  color: #6c3d12;
+}
+
+.authority-warning ul {
+  margin: 0.25rem 0 0;
+  padding-inline-start: 1.25rem;
+}
+
+.authority-badge {
+  display: inline-block;
+  margin: 0.25rem 0;
+  padding: 0.2rem 0.55rem;
+  border-radius: 0.35rem;
+  background: #fff0d7;
+  color: #6c3d12;
+  font-size: 0.8rem;
+  font-weight: 700;
+}
+
+.authority-badge-current {
+  background: #e6f3ee;
+  color: #1f5848;
+}
+
+@media (max-width: 640px) {
+  .relation-passages {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}

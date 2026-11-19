@@ -15,12 +15,14 @@ import { useAuth } from '../auth.js';
 import { CitationChips, CitationPanel } from '../search/citation-panel.js';
 import { EmptyState, ErrorState, LoadingState } from '../states.js';
 import { RejectionForm } from './rejection-form.js';
+import { StaleTaskActions } from './stale-task-actions.js';
 import './work.css';
 
 const tabLabels: Record<TaskScope, string> = {
   mine: 'My tasks',
   department: 'Department queue',
   review: 'Review queue',
+  stale: 'Stale tasks',
 };
 const statuses: Record<TaskStatus, string> = {
   open: 'Open',
@@ -42,13 +44,25 @@ export function TasksPage() {
   const { client, sessionId } = useAuth();
   const canRead = profile.permissions.includes('tasks:read');
   const canChange = profile.permissions.includes('tasks:transition');
+  const canReviewStale = profile.permissions.includes('relations:review');
   const cache = useQueryClient();
   const tabs = useId();
   const [scope, setScope] = useState<TaskScope>('mine');
   const [citation, setCitation] = useState<Citation>();
   const [rejection, setRejection] = useState<number>();
   const key = ['task-feed', sessionId];
-  const feed = useQuery({ queryKey: key, queryFn: client.tasks, enabled: canRead, retry: false });
+  const feed = useQuery({
+    queryKey: key,
+    queryFn: () => client.tasks(),
+    enabled: canRead,
+    retry: false,
+  });
+  const staleFeed = useQuery({
+    queryKey: [...key, 'stale'],
+    queryFn: () => client.tasks('stale'),
+    enabled: canRead && canReviewStale && scope === 'stale',
+    retry: false,
+  });
   const mutation = useMutation({
     mutationFn: ({ id, change }: { id: number; change: TaskTransition }) =>
       client.transitionTask(id, change),
@@ -92,7 +106,8 @@ export function TasksPage() {
   });
   const scopes = feed.data?.available_scopes ?? ['mine'];
   const selected = scopes.includes(scope) ? scope : 'mine';
-  const items = feed.data?.tasks.filter((task) => task.scope === selected) ?? [];
+  const visibleFeed = selected === 'stale' ? staleFeed : feed;
+  const items = visibleFeed.data?.tasks.filter((task) => task.scope === selected) ?? [];
   if (!canRead)
     return (
       <ErrorState title="Access denied" description="Your account does not have access to tasks." />
@@ -143,15 +158,15 @@ export function TasksPage() {
         aria-labelledby={tabs + '-' + selected}
         tabIndex={0}
       >
-        {feed.isPending && <LoadingState label="Loading tasks…" />}
-        {feed.isError && (
+        {visibleFeed.isPending && <LoadingState label="Loading tasks…" />}
+        {visibleFeed.isError && (
           <ErrorState
             title="Tasks could not load"
             action={
               <button
                 className="secondary-button"
                 type="button"
-                onClick={() => void feed.refetch()}
+                onClick={() => void visibleFeed.refetch()}
               >
                 Try again
               </button>
@@ -164,7 +179,7 @@ export function TasksPage() {
             description={mutation.error instanceof ApiError ? mutation.error.message : 'Try again.'}
           />
         )}
-        {feed.data && !items.length && <EmptyState title="No tasks in this queue" />}
+        {visibleFeed.data && !items.length && <EmptyState title="No tasks in this queue" />}
         {items.length > 0 && (
           <div
             className="work-table-wrap"
@@ -200,12 +215,17 @@ export function TasksPage() {
                     </td>
                     <td>
                       <span className="work-status">{statuses[task.status]}</span>
+                      {task.stale && (
+                        <p className="authority-badge">Stale · manager decision required</p>
+                      )}
                       {task.rejection_reason && (
                         <p className="work-muted">{task.rejection_reason}</p>
                       )}
                     </td>
                     <td>
-                      {rejection === task.id ? (
+                      {task.stale ? (
+                        canReviewStale && <StaleTaskActions task={task} />
+                      ) : rejection === task.id ? (
                         <RejectionForm
                           pending={mutation.isPending}
                           onReject={(reason) =>

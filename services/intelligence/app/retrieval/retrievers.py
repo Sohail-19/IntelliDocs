@@ -8,6 +8,7 @@ from typing import Literal
 from qdrant_client import models
 
 from app.vector_store import QdrantStore
+from app.vector_store.qdrant_store import chunk_from_payload
 from intellidocs_intelligence.embeddings import Embedding
 from intellidocs_intelligence.models import Chunk
 
@@ -47,7 +48,7 @@ def _point_order(point: models.ScoredPoint) -> tuple[float, str]:
     return -point.score, str(point.id)
 
 
-class _QdrantRetriever(Retriever):
+class QdrantRetriever(Retriever):
     source: Source
 
     def __init__(self, store: QdrantStore, config: RetrievalConfig | None = None) -> None:
@@ -63,17 +64,25 @@ class _QdrantRetriever(Retriever):
     def retrieve_pool(
         self, query: str, filters: Mapping[str, str] | None = None
     ) -> list[Candidate]:
+        return self._retrieve(query, payload_filter(filters), self.config.candidate_pool_size)
+
+    def retrieve_matching(self, query: str, where: models.Filter, limit: int) -> list[Candidate]:
+        """Retrieve a bounded pool using an internal Qdrant filter."""
+        return self._retrieve(query, where, validate_top_k(limit))[:limit]
+
+    def _retrieve(
+        self, query: str, where: models.Filter | None, pool: int
+    ) -> list[Candidate]:
         if not query.strip():
             raise ValueError("Retrieval query must not be blank")
-        where = payload_filter(filters)
         if not self.store.client.collection_exists(self.store.collection_name):
             return []
         embeddings = self.store.embedder.embed_queries([query])
         if len(embeddings) != 1:
             raise ValueError("Expected one query embedding")
-        points = self._search(embeddings[0], where, self.config.candidate_pool_size)
+        points = self._search(embeddings[0], where, pool)
         return [
-            Candidate(Chunk.model_validate(point.payload), point.score, self.source)
+            Candidate(chunk_from_payload(point.payload), point.score, self.source)
             for point in sorted(points, key=_point_order)
         ]
 
@@ -97,7 +106,7 @@ class _QdrantRetriever(Retriever):
         """Fetch the bounded candidate set."""
 
 
-class DenseOnlyRetriever(_QdrantRetriever):
+class DenseOnlyRetriever(QdrantRetriever):
     source: Source = "dense"
 
     def _search(
@@ -106,7 +115,7 @@ class DenseOnlyRetriever(_QdrantRetriever):
         return self._query(embedding["dense"], self.store.dense_vector_name, where, pool)
 
 
-class SparseOnlyRetriever(_QdrantRetriever):
+class SparseOnlyRetriever(QdrantRetriever):
     source: Source = "sparse"
 
     def _search(
@@ -118,7 +127,7 @@ class SparseOnlyRetriever(_QdrantRetriever):
         return self._query(vector, self.store.sparse_vector_name, where, pool)
 
 
-class HybridRetriever(_QdrantRetriever):
+class HybridRetriever(QdrantRetriever):
     source: Source = "fused"
 
     def _search(
@@ -156,9 +165,9 @@ class HybridRetriever(_QdrantRetriever):
         return [point.model_copy(update={"score": scores[key]}) for key, point in points.items()]
 
 
-def create_retriever(store: QdrantStore, config: RetrievalConfig | None = None) -> Retriever:
+def create_retriever(store: QdrantStore, config: RetrievalConfig | None = None) -> QdrantRetriever:
     settings = config if config is not None else RetrievalConfig.from_env()
-    implementations: dict[str, type[_QdrantRetriever]] = {
+    implementations: dict[str, type[QdrantRetriever]] = {
         "hybrid": HybridRetriever,
         "dense": DenseOnlyRetriever,
         "sparse": SparseOnlyRetriever,

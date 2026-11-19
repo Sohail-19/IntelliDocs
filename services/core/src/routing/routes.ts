@@ -24,6 +24,8 @@ export function routingRouter(service: PostgresRoutingService, guard: Guard): Ro
             response.status(409).json({ error: 'Routing is not configured for the organization' });
           else if (result === 'rejected')
             response.status(409).json({ error: 'The obligation was rejected in review' });
+          else if (result === 'stale')
+            response.status(409).json({ error: 'Resolve the pending stale obligation review' });
           else response.json({ assignment: result });
         })
         .catch(next);

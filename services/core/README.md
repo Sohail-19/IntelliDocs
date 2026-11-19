@@ -38,6 +38,9 @@ Node/Express/TypeScript service for platform orchestration and integration with 
 | `GET /api/tasks` | `tasks:read` |
 | `PATCH /api/tasks/:id/status` | `tasks:transition` and access to the active assignment |
 | `GET /api/audit` | `audit:read` |
+| `GET /api/relations`, `GET /api/relations/:id` | `relations:review` |
+| `POST /api/relations/:id/confirm`, `POST /api/relations/:id/dismiss`, `PATCH /api/relations/:id/type` | `relations:review` |
+| `GET /api/relations/:id/stale-obligations`, `PATCH /api/relations/:id/stale-obligations/:obligation_id` | `relations:review` |
 
 ## Roles and permissions
 
@@ -48,7 +51,7 @@ grants in the bundled example org.
 | --- | --- |
 | `documents:search`, `documents:answer`, `obligations:read`, `tasks:read` | `admin`, `manager`, `officer`, `finance_officer`, `viewer` |
 | `documents:upload`, `tasks:transition` | `admin`, `manager`, `officer`, `finance_officer` |
-| `audit:read`, `org:read`, `obligations:extract`, `obligations:status`, `obligations:assign`, `obligations:review` | `admin`, `manager` |
+| `audit:read`, `org:read`, `obligations:extract`, `obligations:status`, `obligations:assign`, `obligations:review`, `relations:review` | `admin`, `manager` |
 | `users:register`, `users:roles` | `admin` |
 
 ## Authentication
@@ -265,6 +268,49 @@ preserves human overrides and decisions for the same obligation ID. If a
 refreshed extraction no longer supplies a citation, its prior approval
 returns to review.
 
+## Document authority and stale obligations
+
+Apply the document-relations migration before starting core. Core runs relation
+detection after indexing and successful extraction and audits each run. A
+detection failure leaves extraction complete. Retry through the document index
+or obligation extraction endpoint. Repeated detections preserve prior review
+decisions.
+
+The document payload includes `authority_status` separately from processing
+`status`. Proposed changes put otherwise current targets `under_review`.
+Confirmed full supersessions and withdrawals set `superseded` or `withdrawn`.
+The newest dated confirmed full change takes precedence. Confirmed targeted
+changes set `partially_amended` and affect only matching clause numbers or
+cited spans. Confirmed references and conflicts have no stale effects.
+
+The `relations:review` grant allows `GET /api/relations` to list proposals.
+Pass `status=confirmed` for reviewed relations, or use
+`GET /api/relations/:id` to open a relation linked from a stale task.
+Use `PATCH /api/relations/:id/type` with `relation_type`,
+`POST /api/relations/:id/confirm`, or `POST /api/relations/:id/dismiss` with
+a nonblank `reason`. Confirmation requires verified citations on both sides.
+Known dates must put the source after the target. Confirmation commits the
+decision, document authority, pending stale links, and audit trail together.
+
+Stale tasks expose `stale_relation_ids` and pause progression, overdue
+processing, and automatic escalation. Use
+`GET /api/relations/:id/stale-obligations` to list pending reviews and
+`PATCH /api/relations/:id/stale-obligations/:obligation_id` to decide using
+the integer row ID, a `decision`, and a `reason`. `keep` preserves the
+existing instruction. `update` also takes a replacement `action` and uses
+the relation's current source citations as a human override. `close`
+closes the task and assignment while preserving their history.
+
+Document details include `authority_warnings` when a newer document changes
+their authority. Stale search hits include `stale` and `authority_warnings` with
+`newer_doc_id`. Answers remove claims citing changed instructions, return
+`stale_sources` and the same warnings, and abstain when no current claims
+remain.
+
+To run the concurrent-review test locally, set `RELATION_TEST_DATABASE_URL`
+to a PostgreSQL 16 database where the test can create and remove its own
+temporary schema. The Node CI job provides this database automatically.
+
 ## Obligation tasks
 
 Apply the task workflow migration before starting core. Assigned obligations
@@ -280,7 +326,8 @@ dates `due_from` and `due_to` in YYYY-MM-DD. All visible assignments appear
 by default. Use `scope=mine` for directly assigned tasks and regular role
 queues, `scope=department` for the user's department queue, or `scope=review`
 for the configured review role queue. Queue visibility follows the user's
-current memberships.
+current memberships. With `relations:review`, `scope=stale` lists assigned
+tasks awaiting a stale decision across the organization.
 
 `PATCH /api/tasks/:id/status` accepts `{"status":"acknowledged"}` and requires
 `tasks:transition` and access to the active assignment. Pending obligations
