@@ -62,6 +62,10 @@ represents a chunk with no heading context.
 Set `debug: true` to receive the retriever and reranker names and elapsed
 milliseconds for retrieval, reranking, and citation construction.
 
+Indexed Chunk v1 payloads may include `org_id` from the stored ParseResult.
+The search and answer filter maps accept `org_id` as an exact match. Core sets
+that filter from the authenticated account on every request to either endpoint.
+
 The Phase 4 answer contract defines `POST /v1/answer` with an `AnswerRequest`
 body and an `Answer` response. Requests require a nonblank `query`, `top_k`
 from 1 to 100, and a requested `language`. Optional `filters` use the search
@@ -106,3 +110,18 @@ Extraction uses the stored ParseResult and the document's indexed chunks.
 New ParseResults include `org_id` so extraction uses the organization selected
 at ingestion. Older ParseResults use `DEFAULT_ORG_ID`. The endpoint returns
 404 for a missing document and 409 if its index is missing or incomplete.
+
+Obligation v1 optionally includes `confidence_breakdown`. Its six numeric
+fields are the additive contributions from exact or fuzzy quote verification,
+owner resolution, deadline resolution, configured cue recognition, and
+agreement across chunks. Their sum is `confidence` within floating-point
+precision. Exact and fuzzy contributions are mutually exclusive.
+
+OrgConfig v1 accepts structured routing rules alongside the legacy config
+format. A structured rule has an `id`, integer `priority`, `conditions`,
+and a `target` with a `kind` and `value`. `escalation_after_days` is
+optional. Structured rules require `routing_policy`, which supplies
+`min_confidence` and `review_role`. Core validates that rule IDs are unique,
+the referenced departments, document types, and roles exist, and exactly
+one unconditional default runs last. A legacy config without
+`routing_policy` leaves automatic routing disabled.

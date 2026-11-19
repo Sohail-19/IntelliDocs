@@ -89,13 +89,14 @@ def test_all_payload_indexes_requested_once(
     store = QdrantStore(client, "chunks", FakeEmbedder())
     store.upsert_chunks([chunk()])
     store.upsert_chunks([chunk()])
-    assert create_index.call_count == 5
+    assert create_index.call_count == len(PAYLOAD_INDEXES)
     actual = {
         call.kwargs["field_name"]: call.kwargs["field_schema"]
         for call in create_index.call_args_list
     }
     assert actual == PAYLOAD_INDEXES
     assert actual["doc_date"] == models.PayloadSchemaType.DATETIME
+    assert actual["org_id"] == models.PayloadSchemaType.KEYWORD
     assert all(call.kwargs["wait"] for call in create_index.call_args_list)
 
 

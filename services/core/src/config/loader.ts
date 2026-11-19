@@ -6,12 +6,20 @@ import { Ajv2020 } from 'ajv/dist/2020.js';
 import addFormats from 'ajv-formats';
 import YAML from 'yaml';
 
-export interface RoutingRule {
+import { configuredRouting } from '../routing/config.js';
+import type { RoutingPolicy, RoutingRule } from '../routing/engine.js';
+
+interface LegacyRoutingRule {
   document_type: string;
   department: string;
 }
 
 export interface OrgConfig {
+  access?: {
+    bootstrap_role: string;
+    registration_role: string;
+    role_permissions: Record<string, string[]>;
+  };
   upload_defaults?: { department?: string; doc_type?: string; doc_date?: string };
   languages: string[];
   ocr_engine: string;
@@ -28,8 +36,11 @@ export interface OrgConfig {
   >;
   department_aliases?: Record<string, string[]>;
   roles?: Record<string, { department?: string; aliases?: string[] }>;
-  routing_rules: RoutingRule[];
+  routing_policy?: RoutingPolicy;
+  routing_rules: (RoutingRule | LegacyRoutingRule)[];
 }
+
+export class OrgConfigError extends Error {}
 
 const moduleDirectory = dirname(fileURLToPath(import.meta.url));
 const repositoryRoot = resolve(moduleDirectory, '../../../../');
@@ -52,19 +63,42 @@ async function validator() {
 
 export async function loadOrgConfig(path: string): Promise<OrgConfig> {
   const contents = await readFile(path, 'utf8');
-  const candidate: unknown = YAML.parse(contents);
+  let candidate: unknown;
+  try {
+    candidate = YAML.parse(contents);
+  } catch (error) {
+    const detail = error instanceof Error ? error.message : 'Invalid YAML';
+    throw new OrgConfigError('Invalid organization config ' + path + ': ' + detail);
+  }
   const validate = await validator();
   if (!validate(candidate)) {
-    throw new Error(`Invalid organization config ${path}: ${JSON.stringify(validate.errors)}`);
+    throw new OrgConfigError(
+      `Invalid organization config ${path}: ${JSON.stringify(validate.errors)}`,
+    );
+  }
+  try {
+    configuredRouting(candidate);
+  } catch (error) {
+    const detail = error instanceof Error ? error.message : 'Invalid routing configuration';
+    throw new OrgConfigError('Invalid organization config ' + path + ': ' + detail);
   }
   return candidate;
 }
 
 export async function loadOrgConfigs(directory = defaultOrgConfigDirectory): Promise<OrgConfig[]> {
+  return (await loadNamedOrgConfigs(directory)).map(({ config }) => config);
+}
+
+export async function loadNamedOrgConfigs(directory = defaultOrgConfigDirectory) {
   const entries = await readdir(directory, { withFileTypes: true });
   const configPaths = entries
     .filter((entry) => entry.isFile() && /\.ya?ml$/i.test(entry.name))
-    .map((entry) => resolve(directory, entry.name))
+    .map((entry) => entry.name)
     .sort();
-  return Promise.all(configPaths.map(loadOrgConfig));
+  return Promise.all(
+    configPaths.map(async (name) => ({
+      slug: name.replace(/\.ya?ml$/i, ''),
+      config: await loadOrgConfig(resolve(directory, name)),
+    })),
+  );
 }

@@ -21,6 +21,7 @@
     "language": { "type": "string", "minLength": 2 },
     "department": { "type": "string", "minLength": 1 },
     "doc_date": { "type": "string", "format": "date" },
-    "doc_type": { "type": "string", "minLength": 1 }
+    "doc_type": { "type": "string", "minLength": 1 },
+    "org_id": { "type": "string", "minLength": 1 }
   }
 }

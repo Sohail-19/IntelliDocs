@@ -14,6 +14,7 @@ from intellidocs_intelligence.models import Chunk
 from .base import VectorStore
 
 PAYLOAD_INDEXES = {
+    "org_id": models.PayloadSchemaType.KEYWORD,
     "department": models.PayloadSchemaType.KEYWORD,
     "doc_type": models.PayloadSchemaType.KEYWORD,
     "doc_date": models.PayloadSchemaType.DATETIME,

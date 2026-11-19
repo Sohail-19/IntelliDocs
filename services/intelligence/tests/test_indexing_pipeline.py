@@ -88,6 +88,7 @@ def test_ingest_index_metadata_batches_and_cache(pipeline: IndexingService) -> N
     for point in points:
         assert point.payload
         assert point.payload["doc_id"] == identifier
+        assert point.payload["org_id"] == "example"
         assert point.payload["department"] == "legal"
         assert point.payload["doc_type"] == "agreement"
         assert point.payload["doc_date"] == "2026-11-15"

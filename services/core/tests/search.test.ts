@@ -3,7 +3,7 @@ import { readFileSync } from 'node:fs';
 import request from 'supertest';
 import { describe, expect, it, vi } from 'vitest';
 
-import { createApp } from '../src/app.js';
+import { scopedApp } from './scoped-app.js';
 import { IntelligenceError } from '../src/intelligence/client.js';
 import type { IntelligenceClient } from '../src/intelligence/client.js';
 
@@ -15,7 +15,7 @@ const example = JSON.parse(
 ) as unknown;
 
 function appWithSearch(search: IntelligenceClient['search']) {
-  return createApp({
+  return scopedApp({
     intelligence: { search, ingest: vi.fn(), index: vi.fn() },
     documents: { save: vi.fn(), setStatus: vi.fn() },
   });
@@ -39,7 +39,12 @@ describe('GET /api/search', () => {
       query: 'विभाग report',
       top_k: 3,
       debug: true,
-      filters: { department: 'legal', document_type: 'agreement', doc_date_from: '2026-11-01' },
+      filters: {
+        org_id: 'example',
+        department: 'legal',
+        document_type: 'agreement',
+        doc_date_from: '2026-11-01',
+      },
     });
   });
 
@@ -55,7 +60,7 @@ describe('GET /api/search', () => {
       query: 'report',
       top_k: 1,
       debug: false,
-      filters: { language: 'hi' },
+      filters: { language: 'hi', org_id: 'example' },
     });
   });
 

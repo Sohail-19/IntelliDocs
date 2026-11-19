@@ -8,10 +8,15 @@ schemas and OpenAPI contract in [`contracts/`](contracts/).
 
 ## Run with Docker
 
-Copy the environment template and replace its placeholders with local values:
+Copy the environment template and fill in local values, including distinct
+`AUTH_JWT_SECRET` and `AUTH_BOOTSTRAP_TOKEN` secrets. Start Postgres and apply
+the core migrations before starting the full stack:
 
 ```sh
 cp .env.example .env
+docker compose up -d postgres
+npm ci --prefix services/core
+DATABASE_URL='postgresql://USER:PASSWORD@localhost:5432/DB' npm --prefix services/core run migrate:up
 docker compose up --build
 ```
 
@@ -24,15 +29,16 @@ curl http://localhost:3000/health
 
 Stop the stack with `docker compose down`.
 
-For uploads, first apply the core migrations using the host Node toolchain (see
-[`services/core/README.md`](services/core/README.md)), with `DATABASE_URL` pointing
-to the exposed Postgres port. Then upload through core:
+Register the first administrator and log in through core to get an access
+token. See [core authentication](services/core/README.md#authentication).
+Supply the token when uploading:
 
 ```sh
-curl --fail -F file=@document.pdf -F org_id=example http://localhost:3000/v1/upload
+curl --fail -H "Authorization: Bearer $ACCESS_TOKEN" -F file=@document.pdf http://localhost:3000/v1/upload
 ```
 
-Intelligence also accepts the same fields at `http://localhost:8000/v1/ingest`.
+Intelligence, Qdrant, and Postgres bind to loopback for local debugging. Core
+is the authenticated client-facing service.
 `MAX_UPLOAD_BYTES` controls the size limit; `STORAGE_DIR` names its container-local
 storage path, backed by the `intelligence_uploads` volume. Organization selection
 uses `org_id` or `DEFAULT_ORG_ID`, and reads engines/languages from `ORG_CONFIG_DIR`.
@@ -46,6 +52,62 @@ only when `-F index=true` is supplied. Both accept optional `department`,
 embedding backend in `.env`. Re-indexing an unchanged document reuses persisted
 embeddings. The default fake embedder supports local checks; semantic vectors
 require the optional BGE-M3 extra and model files provisioned before runtime.
+
+## Core API
+
+Core is the authenticated API for clients. Endpoint behavior and payloads are
+covered in the [core service README](services/core/README.md).
+
+| Endpoint | Required permission or credential |
+| --- | --- |
+| `GET /health` | Public |
+| `POST /api/auth/register` | Bootstrap token for the first account, then `users:register` |
+| `POST /api/auth/login` | Organization, email, and password |
+| `POST /api/auth/refresh` | Current refresh token |
+| `PUT /api/users/:id/roles` | `users:roles` |
+| `POST /v1/upload` | `documents:upload` |
+| `POST /api/documents/:id/index` | `documents:upload` |
+| `GET /api/search` | `documents:search` |
+| `GET /api/answer` | `documents:answer` |
+| `GET /api/obligations` | `obligations:read` |
+| `GET /api/documents/:id/obligations` | `obligations:read` |
+| `POST /api/documents/:id/obligations` | `obligations:extract` |
+| `PATCH /api/documents/:id/obligations/:obligation_id/status` | `obligations:status` |
+| `PATCH /api/documents/:id/obligations/:obligation_id/assignment` | `obligations:assign` |
+| `POST /api/documents/:id/obligations/:obligation_id/route` | `obligations:assign` |
+| `GET /api/obligations/review` | `obligations:review` |
+| `PATCH /api/documents/:id/obligations/:obligation_id/review` | `obligations:review` |
+| `POST /api/documents/:id/obligations/:obligation_id/review/approve` | `obligations:review` |
+| `POST /api/documents/:id/obligations/:obligation_id/review/reject` | `obligations:review` |
+| `GET /api/tasks` | `tasks:read` |
+| `PATCH /api/tasks/:id/status` | `tasks:transition` and access to the active assignment |
+| `GET /api/audit` | `audit:read` |
+
+## Roles and permissions
+
+Grants come from `access.role_permissions` in each org config. These are the
+grants in the bundled example org.
+
+| Permissions | Roles |
+| --- | --- |
+| `documents:search`, `documents:answer`, `obligations:read`, `tasks:read` | `admin`, `manager`, `officer`, `finance_officer`, `viewer` |
+| `documents:upload`, `tasks:transition` | `admin`, `manager`, `officer`, `finance_officer` |
+| `audit:read`, `obligations:extract`, `obligations:status`, `obligations:assign`, `obligations:review` | `admin`, `manager` |
+| `users:register`, `users:roles` | `admin` |
+
+## Intelligence API
+
+| Endpoint | Purpose |
+| --- | --- |
+| `GET /health` | Check service health |
+| `POST /v1/ingest` | Parse an uploaded file and optionally index it |
+| `POST /v1/index` | Index an already parsed document |
+| `POST /v1/search` | Retrieve cited document chunks |
+| `POST /v1/answer` | Generate and verify a grounded answer |
+| `POST /v1/extract-obligations` | Extract, verify, and resolve obligations |
+
+The [intelligence OpenAPI contract](contracts/openapi/intelligence.v1.yaml)
+defines requests and responses.
 
 ## Run checks locally
 

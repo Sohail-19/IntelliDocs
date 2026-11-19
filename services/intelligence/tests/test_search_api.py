@@ -111,6 +111,20 @@ def _legacy_chunk(doc_id: str, text: str) -> Chunk:
     return Chunk(id=doc_id, doc_id=doc_id, page=4, char_start=0, char_end=len(text), text=text)
 
 
+def test_org_filter_excludes_other_and_untagged_documents(store: QdrantStore) -> None:
+    store.upsert_chunks(
+        [
+            _legacy_chunk("allowed", "report").model_copy(update={"org_id": "example"}),
+            _legacy_chunk("other", "report").model_copy(update={"org_id": "another"}),
+            _legacy_chunk("legacy", "report"),
+        ]
+    )
+    _configure(SearchService(HybridRetriever(store, RetrievalConfig()), NoOpReranker()))
+    response = _respond(top_k=10, filters={"org_id": "example"})
+    assert response.status_code == 200
+    assert [item["chunk"]["doc_id"] for item in response.json()["results"]] == ["allowed"]
+
+
 def test_top_k_limits_results_after_reranking_the_full_pool(store: QdrantStore) -> None:
     first, second = _legacy_chunk("other", "Lunch"), _legacy_chunk("match", "report")
     query_vector = store.embedder.embed_queries(["report"])[0]

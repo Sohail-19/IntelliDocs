@@ -5,7 +5,7 @@ from datetime import UTC, date, datetime, time
 
 from qdrant_client import models
 
-KEYWORD_FIELDS = {"department", "doc_type", "language", "doc_id"}
+KEYWORD_FIELDS = {"department", "doc_type", "language", "doc_id", "org_id"}
 DATE_FIELDS = {"doc_date", "doc_date_from", "doc_date_to"}
 
 

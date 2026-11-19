@@ -4,6 +4,8 @@ import { Ajv2020 } from 'ajv/dist/2020.js';
 import addFormats from 'ajv-formats';
 import { Router } from 'express';
 
+import { principal } from './auth/routes.js';
+import type { Guard } from './auth/routes.js';
 import { IntelligenceError } from './intelligence/client.js';
 import type { Answer, AnswerRequest, IntelligenceClient } from './intelligence/client.js';
 
@@ -16,9 +18,9 @@ for (const name of ['citation', 'claim', 'answer', 'answer-request']) {
 const validateRequest = ajv.compile<AnswerRequest>({ $ref: 'answer-request.v1.schema.json' });
 const validateResponse = ajv.compile<Answer>({ $ref: 'answer.v1.schema.json' });
 
-export function answerRouter(answer: IntelligenceClient['answer']): Router {
+export function answerRouter(answer: IntelligenceClient['answer'], guard: Guard): Router {
   const router = Router();
-  router.get('/api/answer', (request, response) => {
+  router.get('/api/answer', guard('documents:answer'), (request, response) => {
     const { query, language, top_k, filters, ...flatFilters } = request.query;
     if (typeof query !== 'string' || !query.trim()) {
       response.status(422).json({ error: 'query must contain non-whitespace text' });
@@ -51,7 +53,10 @@ export function answerRouter(answer: IntelligenceClient['answer']): Router {
     }
     void (async () => {
       try {
-        const result: unknown = await answer(body);
+        const result: unknown = await answer({
+          ...body,
+          filters: { ...body.filters, org_id: principal(response).orgSlug },
+        });
         if (
           !validateResponse(result) ||
           result.claims.some(

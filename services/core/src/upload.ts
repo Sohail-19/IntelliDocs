@@ -1,6 +1,10 @@
 import { Router } from 'express';
 import multer from 'multer';
 
+import { auditContext } from './audit.js';
+import type { AuditContext } from './audit.js';
+import { principal } from './auth/routes.js';
+import type { Guard } from './auth/routes.js';
 import type { DocumentRepository } from './documents.js';
 import { IntelligenceError } from './intelligence/client.js';
 import type {
@@ -19,7 +23,9 @@ export interface UploadDependencies {
 
 export function uploadRouter(
   dependencies: UploadDependencies,
-  extract?: (docId: string) => Promise<ExtractionResult>,
+  guard: Guard,
+  extract?: (docId: string, audit: AuditContext) => Promise<ExtractionResult>,
+  ownsDocument?: (docId: string, orgId: number) => Promise<boolean>,
 ): Router {
   const router = Router();
   const maxBytes = dependencies.maxBytes ?? Number(process.env.MAX_UPLOAD_BYTES ?? 20971520);
@@ -33,7 +39,41 @@ export function uploadRouter(
       fieldSize: 256,
     },
   });
-  router.post('/v1/upload', (req, res, next) => {
+  async function indexDocument(docId: string, audit: AuditContext): Promise<IndexResult | null> {
+    let indexed: IndexResult;
+    try {
+      indexed = await dependencies.intelligence.index({ doc_id: docId });
+      if (indexed.doc_id !== docId) throw new Error('Index response document mismatch');
+    } catch {
+      await dependencies.documents.setStatus(docId, audit, 'failed', 'Indexing failed');
+      return null;
+    }
+    await dependencies.documents.setStatus(docId, audit, 'indexed');
+    return indexed;
+  }
+  if (ownsDocument) {
+    router.post('/api/documents/:id/index', guard('documents:upload'), (req, res, next) => {
+      const docId = req.params.id;
+      const audit = auditContext(req, res, principal(res));
+      void (async () => {
+        if (typeof docId !== 'string' || !(await ownsDocument(docId, audit.orgId))) {
+          res.status(404).json({ error: 'Document not found' });
+          return;
+        }
+        const indexed = await indexDocument(docId, audit);
+        if (!indexed) {
+          res.status(502).json({ error: 'Indexing failed' });
+          return;
+        }
+        try {
+          res.json({ index_result: indexed, extraction_result: await extract?.(docId, audit) });
+        } catch {
+          res.status(502).json({ index_result: indexed, error: 'Obligation extraction failed' });
+        }
+      })().catch(next);
+    });
+  }
+  router.post('/v1/upload', guard('documents:upload'), (req, res, next) => {
     upload.single('file')(req, res, (error: unknown) => {
       if (error) {
         res
@@ -48,9 +88,15 @@ export function uploadRouter(
         return;
       }
       const fields = req.body as Record<string, unknown>;
+      const user = principal(res);
+      const audit = auditContext(req, res, user);
       const orgId = fields.org_id;
       if (orgId !== undefined && (typeof orgId !== 'string' || !/^[A-Za-z0-9_-]+$/.test(orgId))) {
         res.status(400).json({ error: 'Invalid org_id' });
+        return;
+      }
+      if (orgId !== undefined && orgId !== user.orgSlug) {
+        res.status(403).json({ error: 'Organization does not match authenticated account' });
         return;
       }
       for (const name of ['department', 'doc_type', 'doc_date']) {
@@ -72,7 +118,7 @@ export function uploadRouter(
       }
       const request: IngestRequest = {
         file: new Blob([new Uint8Array(req.file.buffer)], { type: req.file.mimetype }),
-        ...(typeof orgId === 'string' ? { org_id: orgId } : {}),
+        org_id: user.orgSlug,
         ...(typeof fields.department === 'string' ? { department: fields.department } : {}),
         ...(typeof fields.doc_type === 'string' ? { doc_type: fields.doc_type } : {}),
         ...(docDate !== undefined ? { doc_date: docDate } : {}),
@@ -81,7 +127,7 @@ export function uploadRouter(
       const filename = req.file.originalname;
       void (async () => {
         const result = await dependencies.intelligence.ingest(request, filename);
-        await dependencies.documents.save(result);
+        await dependencies.documents.save(result, audit);
         const indexResults: IndexResult[] = [];
         const extractionResults: ExtractionResult[] = [];
         const extractionFailures: string[] = [];
@@ -89,20 +135,15 @@ export function uploadRouter(
         const documents: ParseResult[] = [result.parse_result];
         for (const parsed of documents) {
           documents.push(...(parsed.attachments ?? []));
-          try {
-            const indexed = await dependencies.intelligence.index({ doc_id: parsed.document.id });
-            if (indexed.doc_id !== parsed.document.id)
-              throw new Error('Index response document mismatch');
-            await dependencies.documents.setStatus(parsed.document.id, 'indexed');
-            indexResults.push(indexed);
-          } catch {
+          const indexed = await indexDocument(parsed.document.id, audit);
+          if (!indexed) {
             failed = true;
-            await dependencies.documents.setStatus(parsed.document.id, 'failed', 'Indexing failed');
             continue;
           }
+          indexResults.push(indexed);
           if (extract) {
             try {
-              extractionResults.push(await extract(parsed.document.id));
+              extractionResults.push(await extract(parsed.document.id, audit));
             } catch {
               extractionFailures.push(parsed.document.id);
             }

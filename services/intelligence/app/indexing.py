@@ -61,6 +61,8 @@ class IndexingService:
                 doc_type=document.doc_type,
                 doc_date=document.doc_date,
             )
+            for chunk in chunks:
+                chunk.org_id = result.org_id
             basis = {
                 "version": 1,
                 "content_hash": content_hash,

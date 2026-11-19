@@ -4,6 +4,8 @@ import { Ajv2020 } from 'ajv/dist/2020.js';
 import addFormats from 'ajv-formats';
 import { Router } from 'express';
 
+import { principal } from './auth/routes.js';
+import type { Guard } from './auth/routes.js';
 import { IntelligenceError } from './intelligence/client.js';
 import type { IntelligenceClient, SearchRequest, SearchResponse } from './intelligence/client.js';
 
@@ -16,10 +18,10 @@ for (const name of ['chunk', 'citation', 'search-result', 'search-request', 'sea
 const validateRequest = ajv.compile<SearchRequest>({ $ref: 'search-request.v1.schema.json' });
 const validateResponse = ajv.compile<SearchResponse>({ $ref: 'search-response.v1.schema.json' });
 
-export function searchRouter(search: IntelligenceClient['search']): Router {
+export function searchRouter(search: IntelligenceClient['search'], guard: Guard): Router {
   const router = Router();
 
-  router.get('/api/search', (request, response) => {
+  router.get('/api/search', guard('documents:search'), (request, response) => {
     const { query, top_k, debug, filters, ...flatFilters } = request.query;
     if (typeof query !== 'string' || !query.trim()) {
       response.status(422).json({ error: 'query must contain non-whitespace text' });
@@ -56,7 +58,10 @@ export function searchRouter(search: IntelligenceClient['search']): Router {
 
     void (async () => {
       try {
-        const result: unknown = await search(body);
+        const result: unknown = await search({
+          ...body,
+          filters: { ...body.filters, org_id: principal(response).orgSlug },
+        });
         if (!validateResponse(result)) {
           response.status(502).json({ error: 'Invalid intelligence search response' });
           return;

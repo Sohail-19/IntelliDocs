@@ -14,12 +14,51 @@
   ],
   "routing_rules": [
     {
-      "document_type": "agreement",
-      "department": "legal"
+      "id": "urgent-payment",
+      "priority": 20,
+      "conditions": {
+        "obligation_type": "payment",
+        "owner_department": "finance",
+        "deadline_within_days": 3
+      },
+      "target": {
+        "kind": "role_queue",
+        "value": "finance_officer"
+      },
+      "escalation_after_days": 1
     },
     {
-      "document_type": "invoice",
-      "department": "finance"
+      "id": "agreement",
+      "priority": 10,
+      "conditions": {
+        "document_type": "agreement"
+      },
+      "target": {
+        "kind": "department_queue",
+        "value": "legal"
+      },
+      "escalation_after_days": 5
+    },
+    {
+      "id": "invoice",
+      "priority": 10,
+      "conditions": {
+        "document_type": "invoice"
+      },
+      "target": {
+        "kind": "department_queue",
+        "value": "finance"
+      },
+      "escalation_after_days": 5
+    },
+    {
+      "id": "default",
+      "priority": 0,
+      "conditions": {},
+      "target": {
+        "kind": "role_queue",
+        "value": "officer"
+      }
     }
   ],
   "obligation_detection": {
@@ -94,6 +133,70 @@
         "Finance Officer",
         "वित्त अधिकारी"
       ]
+    },
+    "admin": {},
+    "manager": {},
+    "officer": {},
+    "viewer": {}
+  },
+  "access": {
+    "bootstrap_role": "admin",
+    "registration_role": "viewer",
+    "role_permissions": {
+      "admin": [
+        "users:register",
+        "documents:upload",
+        "documents:search",
+        "documents:answer",
+        "obligations:read",
+        "obligations:extract",
+        "audit:read",
+        "obligations:status",
+        "obligations:assign",
+        "obligations:review",
+        "tasks:read",
+        "tasks:transition",
+        "users:roles"
+      ],
+      "manager": [
+        "documents:upload",
+        "documents:search",
+        "documents:answer",
+        "obligations:read",
+        "obligations:extract",
+        "audit:read",
+        "obligations:status",
+        "obligations:assign",
+        "obligations:review",
+        "tasks:read",
+        "tasks:transition"
+      ],
+      "officer": [
+        "documents:upload",
+        "documents:search",
+        "documents:answer",
+        "obligations:read",
+        "tasks:read",
+        "tasks:transition"
+      ],
+      "viewer": [
+        "documents:search",
+        "documents:answer",
+        "obligations:read",
+        "tasks:read"
+      ],
+      "finance_officer": [
+        "documents:upload",
+        "documents:search",
+        "documents:answer",
+        "obligations:read",
+        "tasks:read",
+        "tasks:transition"
+      ]
     }
+  },
+  "routing_policy": {
+    "min_confidence": 0.5,
+    "review_role": "manager"
   }
 }
