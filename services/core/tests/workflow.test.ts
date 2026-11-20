@@ -336,8 +336,10 @@ it('uploads, indexes, extracts, routes, and completes an assigned task with a li
       expect.objectContaining({ org_id: 'example', doc_type: 'invoice', index: false }),
       filename,
     );
-    expect(intelligence.index.mock.calls).toEqual([[{ doc_id: docId }]]);
-    expect(intelligence.extractObligations.mock.calls).toEqual([[{ doc_id: docId }]]);
+    expect(intelligence.index.mock.calls).toEqual([[{ doc_id: docId, org_id: 'example' }]]);
+    expect(intelligence.extractObligations.mock.calls).toEqual([
+      [{ doc_id: docId, org_id: 'example' }],
+    ]);
     expect(intelligence.ingest.mock.invocationCallOrder.at(0)).toBeLessThan(
       intelligence.index.mock.invocationCallOrder[0] ?? 0,
     );

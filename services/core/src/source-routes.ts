@@ -35,6 +35,7 @@ export function sourceRouter(
       ? guard(
           'documents:search',
           'documents:answer',
+          'documents:upload',
           'tasks:read',
           'obligations:review',
           'relations:review',

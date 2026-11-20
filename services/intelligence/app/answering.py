@@ -51,9 +51,12 @@ class AnswerService:
         documents = None
         if self.storage is not None:
             documents = {}
+            org_id = (request.filters or {}).get("org_id")
             for doc_id in dict.fromkeys(chunk.doc_id for chunk in chunks):
                 try:
-                    documents[doc_id] = self.storage.load_result(doc_id).document
+                    parsed = self.storage.load_result(doc_id)
+                    if parsed.org_id == org_id:
+                        documents[doc_id] = parsed.document
                 except (OSError, ValueError):
                     # Missing/stale source material cannot yield verified citations.
                     continue

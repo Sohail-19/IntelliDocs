@@ -405,3 +405,40 @@
     grid-template-columns: 1fr;
   }
 }
+
+.for-you {
+  display: grid;
+  gap: 1rem;
+}
+
+.for-you .document-card-heading,
+.for-you p {
+  margin: 0;
+}
+
+.for-you-preview {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  align-items: end;
+}
+
+.for-you-preview select {
+  min-width: 9rem;
+  min-height: 2.5rem;
+  border: 1px solid var(--line);
+  border-radius: 0.5rem;
+  background: white;
+  padding: 0.35rem 0.5rem;
+}
+
+.for-you-points {
+  display: grid;
+  gap: 0.85rem;
+  list-style: disc;
+  padding-inline-start: 1.25rem;
+}
+
+.for-you-points li > * + * {
+  margin-top: 0.35rem;
+}

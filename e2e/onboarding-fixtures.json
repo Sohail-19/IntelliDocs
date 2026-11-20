@@ -1,0 +1,16 @@
+{
+  "example": {
+    "language": "en", "department": "finance", "doc_type": "invoice",
+    "quote": "Finance Department must submit the reconciliation ledger by 2099-12-31.",
+    "action": "Submit the reconciliation ledger", "owner": "Finance Department",
+    "deadline": "2099-12-31", "due_date": "2099-12-31", "date": "2099-06-10"
+  },
+  "example2": {
+    "language": "es", "department": "water_quality", "doc_type": "water_quality_notice",
+    "quote": "La Unidad de Vigilancia deberá registrar el control de cloro en un plazo de 5 días desde la emisión.",
+    "action": "Registrar el control de cloro", "owner": "Unidad de Vigilancia",
+    "deadline": "en un plazo de 5 días desde la emisión", "due_date": "2099-06-15", "date": "2099-06-10",
+    "additional_quote": "El punto de reparto para los vecinos estará en la plaza del ayuntamiento.",
+    "additional_point": "Los vecinos pueden acudir al punto de reparto en la plaza del ayuntamiento."
+  }
+}

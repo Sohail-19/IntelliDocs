@@ -19,7 +19,9 @@ class VectorStore(ABC):
         """Persist embedded chunks and return the acknowledged upsert count."""
 
     @abstractmethod
-    def delete_document(self, doc_id: str, *, keep_chunk_ids: Sequence[str] = ()) -> None:
+    def delete_document(
+        self, doc_id: str, *, keep_chunk_ids: Sequence[str] = (), org_id: str | None = None
+    ) -> None:
         """Remove document points except explicitly retained IDs, without embedding."""
 
     def search(

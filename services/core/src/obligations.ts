@@ -32,6 +32,7 @@ export type StoredObligation = ExtractedObligation & {
   stale_relation_ids?: string[];
   assigned_user_id?: number | null;
   assignment?: Assignment | null;
+  task_status?: string;
   extracted_owner?: ObligationOwner;
   extracted_deadline?: ObligationDeadline;
   extracted_status?: ObligationStatus;
@@ -439,6 +440,7 @@ export async function listStoredObligations(
       "'extracted_owner', o.owner_details, 'extracted_deadline', o.deadline, 'extracted_status', COALESCE(o.extracted_status, o.status), " +
       "'owner_override', o.owner_override, 'deadline_override', o.deadline_override, " +
       "'review_decision', o.review_decision, 'review_reason', o.review_reason, " +
+      "'task_status', o.task_status, " +
       "'assigned_user_id', o.assigned_user_id, 'assignment', " +
       "(SELECT to_jsonb(a) - 'obligation_id' FROM assignments a WHERE a.obligation_id = o.id AND a.status = 'active')" +
       ') AS obligation FROM obligations o JOIN documents d ON d.id = o.document_id WHERE ' +

@@ -100,10 +100,10 @@ def test_endpoint_indexes_finds_and_verifies_both_spans(
     source = save(storage, "new.pdf", REPLACEMENT, date(2026, 1, 1))
     target = save(storage, "Order 12.pdf", OLD_ORDER, date(2025, 1, 1))
     future = save(storage, "Order 12.pdf", OLD_ORDER, date(2027, 1, 1))
-    other = save(storage, "Order 12.pdf", OLD_ORDER, date(2025, 1, 1), org="elsewhere")
+    other = save(storage, "Order 12.pdf", OLD_ORDER, date(2025, 1, 1), org="example2")
     for doc_id in (source, target, future, other):
         indexer.index(doc_id)
-    monkeypatch.setenv("DEFAULT_ORG_ID", "elsewhere")
+    monkeypatch.setenv("DEFAULT_ORG_ID", "example2")
     with TestClient(app) as client:
         first = client.post("/v1/detect-relations", json={"doc_id": source})
         second = client.post("/v1/detect-relations", json={"doc_id": source})
@@ -137,6 +137,6 @@ def test_endpoint_requires_complete_source_index(
         indexer.index(document)
         empty = client.post("/v1/detect-relations", json={"doc_id": document})
         assert empty.status_code == 200 and empty.json()["relations"] == []
-        indexer.store.delete_document(document)
+        indexer.store.delete_document(document, org_id="example")
         assert client.post("/v1/detect-relations", json={"doc_id": document}).status_code == 409
     assert provider.calls == 0

@@ -9,6 +9,7 @@ export type Permission =
   | "documents:upload"
   | "documents:search"
   | "documents:answer"
+  | "documents:summary-preview"
   | "obligations:read"
   | "obligations:extract"
   | "obligations:status"
@@ -119,7 +120,26 @@ export interface DocumentUploadReceipt {
   relation_failed_document_ids?: string[];
 }
 
+export interface SummaryPreview {
+  department?: string;
+  role?: string;
+}
+
+export interface DocumentSummary {
+  summary: components["schemas"]["summary.v1.schema"] | null;
+  authority_warnings: AuthorityWarning[];
+  preview_options?: {
+    departments: string[];
+    roles: { name: string; department?: string }[];
+  };
+}
+
 export interface CoreDocumentApi {
+  "/api/documents/:id/summary": {
+    method: "GET";
+    body: undefined;
+    result: DocumentSummary;
+  };
   "/api/documents": {
     method: "GET";
     body: undefined;

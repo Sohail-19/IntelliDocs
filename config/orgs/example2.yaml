@@ -1,0 +1,71 @@
+{
+  "languages": ["es", "fr"],
+  "ocr_engine": "tesseract",
+  "document_structure": {
+    "clause_labels": ["Cláusula", "Apartado", "Clause"],
+    "heading_labels": ["Artículo", "Sección", "Article", "Section"],
+    "sentence_abbreviations": ["Sr.", "Sra.", "Dra.", "núm.", "pág.", "art.", "Mme.", "Dr.", "etc."],
+    "page_number_patterns": ["(?:Página|Page)\\s+\\d+(?:\\s+(?:de|sur)\\s+\\d+)?"]
+  },
+  "document_types": ["water_quality_notice", "service_interruption"],
+  "departments": ["water_quality", "customer_service"],
+  "upload_defaults": { "doc_type": "water_quality_notice" },
+  "department_aliases": {
+    "water_quality": ["Unidad de Vigilancia", "Service de surveillance"],
+    "customer_service": ["Atención a Usuarios", "Service aux abonnés"]
+  },
+  "roles": {
+    "service_lead": {},
+    "quality_inspector": { "department": "water_quality", "aliases": ["Inspector de Calidad", "Inspecteur qualité"] },
+    "resident_liaison": { "department": "customer_service", "aliases": ["Enlace Vecinal", "Agent de liaison"] }
+  },
+  "access": {
+    "bootstrap_role": "service_lead",
+    "registration_role": "resident_liaison",
+    "role_permissions": {
+      "service_lead": ["users:register", "users:roles", "org:read", "audit:read", "documents:upload", "documents:search", "documents:answer", "documents:summary-preview", "obligations:read", "obligations:review", "relations:review", "tasks:read", "tasks:transition"],
+      "quality_inspector": ["documents:search", "obligations:read", "tasks:read", "tasks:transition"],
+      "resident_liaison": ["documents:search", "tasks:read"]
+    }
+  },
+  "routing_policy": { "min_confidence": 0.65, "review_role": "service_lead" },
+  "routing_rules": [
+    { "id": "chlorine-control", "priority": 20,
+      "conditions": { "obligation_type": "reporting", "owner_department": "water_quality", "document_type": "water_quality_notice" },
+      "target": { "kind": "role_queue", "value": "quality_inspector" }, "escalation_after_days": 2 },
+    { "id": "interruption-notices", "priority": 10, "conditions": { "document_type": "service_interruption" },
+      "target": { "kind": "department_queue", "value": "customer_service" }, "escalation_after_days": 1 },
+    { "id": "initial-triage", "priority": 0, "conditions": {}, "target": { "kind": "role_queue", "value": "service_lead" } }
+  ],
+  "obligation_detection": {
+    "es": {
+      "cues": ["deberá", "deberán", "es obligatorio"],
+      "date_patterns": ["\\ben un plazo de \\d+ días\\b", "\\ba más tardar el \\d{1,2} de"],
+      "relative_deadline_patterns": ["en un plazo de (?P<days>\\d+) días(?: desde la emisión)?", "en un plazo de (?P<unsupported>\\d+) días hábiles(?: desde la emisión)?"],
+      "absolute_deadline_wrappers": ["a más tardar el (?P<date>.+)"]
+    },
+    "fr": {
+      "cues": ["doit consigner", "est tenu de", "est obligatoire"],
+      "date_patterns": ["\\bdans un délai de \\d+ jours\\b", "\\bau plus tard le \\d{1,2}\\b"],
+      "relative_deadline_patterns": ["dans un délai de (?P<days>\\d+) jours(?: à compter de la publication)?", "dans un délai de (?P<unsupported>\\d+) jours ouvrés(?: à compter de la publication)?"],
+      "absolute_deadline_wrappers": ["au plus tard le (?P<date>.+)"]
+    }
+  },
+  "relation_detection": {
+    "reference_cues": { "es": ["aviso n.º", "de fecha"], "fr": ["avis n°", "en date du"] },
+    "change_cues": { "es": { "amends": ["modifica"], "supersedes": ["sustituye"], "withdraws": ["queda revocado"] }, "fr": { "amends": ["modifie"], "supersedes": ["remplace"], "withdraws": ["est abrogé"] } },
+    "nonoperative_cues": { "es": ["no sustituye"], "fr": ["ne remplace pas"] }
+  },
+  "summary": {
+    "settings": { "max_length": 480, "style": "short_paragraph" },
+    "not_relevant_reasons": { "es": "No se encontraron puntos verificados para este perfil.", "fr": "Aucun point vérifié ne correspond à ce profil." },
+    "department_profiles": {
+      "water_quality": { "focus_topics": ["control de cloro", "contrôle du chlore"], "responsibilities": ["registrar el control de cloro"], "glossary": { "es": { "cloro residual": ["cloro libre"] }, "fr": { "chlore résiduel": ["chlore libre"] } } },
+      "customer_service": { "focus_topics": ["punto de reparto", "point de distribution"], "responsibilities": ["informar sobre el suministro alternativo"], "glossary": { "es": { "suministro alternativo": ["cisterna"] }, "fr": { "approvisionnement de secours": ["citerne"] } } }
+    },
+    "role_profiles": {
+      "quality_inspector": { "focus_topics": ["control de cloro", "contrôle du chlore"], "responsibilities": ["registrar el control de cloro"], "glossary": { "es": { "muestreo": ["toma de muestras"] }, "fr": { "échantillonnage": ["prélèvement"] } } },
+      "resident_liaison": { "focus_topics": ["punto de reparto", "point de distribution"], "responsibilities": ["informar a los vecinos"], "glossary": { "es": { "punto de reparto": ["cisterna"] }, "fr": { "point de distribution": ["citerne"] } } }
+    }
+  }
+}

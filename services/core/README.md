@@ -18,11 +18,12 @@ Node/Express/TypeScript service for platform orchestration and integration with 
 | `POST /v1/upload` | `documents:upload` |
 | `GET /api/documents` | `documents:upload` |
 | `GET /api/documents/upload-options` | `documents:upload` |
-| `GET /api/documents/:id` | `documents:upload` |
+| `GET /api/documents/:id` | `documents:upload`, `documents:search`, or `documents:answer` |
+| `GET /api/documents/:id/summary` | Document access, plus `documents:summary-preview` for audience overrides |
 | `POST /api/documents/:id/index` | `documents:upload` |
 | `GET /api/search` | `documents:search` |
 | `GET /api/search/options` | `documents:search` or `documents:answer` |
-| `GET /api/documents/:id/source` | Search or answer permission, visible task, or pending review access |
+| `GET /api/documents/:id/source` | Document access, visible task, or review access |
 | `GET /api/answer` | `documents:answer` |
 | `GET /api/obligations` | `obligations:read` |
 | `GET /api/documents/:id/obligations` | `obligations:read` |
@@ -267,6 +268,25 @@ and removes it from the task feed. Changes are audited, and re-extraction
 preserves human overrides and decisions for the same obligation ID. If a
 refreshed extraction no longer supplies a citation, its prior approval
 returns to review.
+
+## Document summaries
+
+`GET /api/documents/:id/summary` chooses the audience from the authenticated
+account’s department and roles and uses the organization’s first configured
+language. When the caller has several compatible roles, Core prefers one with
+a summary profile. The response includes current personal assignments and
+department and role queues. Obligation points show the stored due date when
+resolved.
+
+The `documents:summary-preview` grant allows the optional `department` and
+`role` query parameters. Preview responses include the selected audience’s
+queue assignments and record `document.summary.preview` in the audit trail.
+The example organization grants preview access to managers and admins.
+
+Summary responses link to the newer document after confirmation of an
+amendment, supersession, or withdrawal. A partial amendment excludes points
+that cite affected clauses. Full supersession or withdrawal returns the
+warning without summary points.
 
 ## Document authority and stale obligations
 

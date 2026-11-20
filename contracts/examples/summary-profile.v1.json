@@ -1,0 +1,8 @@
+{
+  "focus_topics": ["Payment deadlines", "Financial reporting"],
+  "responsibilities": ["Verify amounts and schedule payments"],
+  "glossary": {
+    "en": { "payment deadline": ["due date", "payment due"] },
+    "hi": { "भुगतान की समयसीमा": ["भुगतान की अंतिम तिथि", "देय तिथि"] }
+  }
+}

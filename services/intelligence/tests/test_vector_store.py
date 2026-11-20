@@ -219,3 +219,20 @@ def test_empty_and_duplicate_batches(client: QdrantClient) -> None:
         store.upsert_chunks([chunk(), chunk()])
     with pytest.raises(NotImplementedError, match="not implemented"):
         store.search({"dense": [], "sparse": {"indices": [], "values": []}}, limit=1)
+
+
+def test_tenant_points_with_colliding_document_and_offsets_are_independent(
+    client: QdrantClient,
+) -> None:
+    store = QdrantStore(client, "chunks", FakeEmbedder())
+    source = chunk("shared")
+    alpha = source.model_copy(update={"org_id": "example"})
+    beta = source.model_copy(update={"org_id": "example2"})
+    store.upsert_chunks([alpha, beta])
+    assert store.load_document_chunks(source.doc_id, org_id="example") == [alpha]
+    assert store.load_document_chunks(source.doc_id, org_id="example2") == [beta]
+    store.delete_document(source.doc_id)
+    assert store.load_document_chunks(source.doc_id, org_id="example2") == [beta]
+    store.delete_document(source.doc_id, org_id="example")
+    assert not store.load_document_chunks(source.doc_id, org_id="example")
+    assert store.load_document_chunks(source.doc_id, org_id="example2") == [beta]

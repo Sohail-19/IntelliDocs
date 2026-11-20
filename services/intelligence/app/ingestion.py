@@ -43,6 +43,8 @@ def load_org(org_id: str | None) -> OrgConfig:
     )
     path = root / f"{selected}.yaml"
     if not path.is_file():
+        path = root / f"{selected}.yml"
+    if not path.is_file():
         raise HTTPException(404, "Organization config not found")
     yaml = dependency("yaml", "formats")
     return OrgConfig.model_validate(yaml.safe_load(path.read_text(encoding="utf-8")))
@@ -112,7 +114,9 @@ class IngestionService:
             created.append(identifier)
             if path.suffix in {".eml", ".msg"}:
                 text, attachments = email_content(path)
-                result = logical_result(path, text.splitlines(), config.languages)
+                result = logical_result(
+                    path, text.splitlines(), config.languages, structure=config.document_structure
+                )
                 result.attachments = []
                 for attachment in attachments:
                     if Path(attachment.filename).suffix.lower() not in MIME_TYPES:
@@ -124,7 +128,9 @@ class IngestionService:
                         store(attachment.filename, attachment.content, identifier, depth + 1)
                     )
             else:
-                result = parse_non_email(path, config.languages, parser, limit)
+                result = parse_non_email(
+                    path, config.languages, parser, limit, structure=config.document_structure
+                )
             result.document.id = identifier
             result.document.filename = filename
             result.document.mime_type = mime_type

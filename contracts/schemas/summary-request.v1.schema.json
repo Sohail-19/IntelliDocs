@@ -1,0 +1,22 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "summary-request.v1.schema.json",
+  "title": "SummaryRequest v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["doc_id", "language"],
+  "properties": {
+    "doc_id": { "type": "string", "pattern": "\\S" },
+    "org_id": { "type": "string", "pattern": "^[A-Za-z0-9_-]+$", "description": "Organization of the authenticated Core caller." },
+    "assigned_obligations": { "type": "array", "items": { "$ref": "obligation.v1.schema.json" }, "description": "Active, authorized obligations selected by Core." },
+    "department": { "anyOf": [{ "type": "string", "pattern": "\\S" }, { "type": "null" }] },
+    "role": { "anyOf": [{ "type": "string", "pattern": "\\S" }, { "type": "null" }] },
+    "language": { "type": "string", "minLength": 2, "pattern": "\\S", "description": "Requested summary language." }
+  },
+  "allOf": [
+    { "anyOf": [
+      { "type": "object", "required": ["department"], "properties": { "department": { "type": "string" } } },
+      { "type": "object", "required": ["role"], "properties": { "role": { "type": "string" } } }
+    ] }
+  ]
+}

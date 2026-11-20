@@ -73,7 +73,10 @@ export function runExtraction(
       throw new ExtractionRouteError(409, 'Document must be indexed before extraction');
     }
     try {
-      const result: unknown = await extract({ doc_id: id });
+      const result: unknown = await extract({
+        doc_id: id,
+        ...(audit.orgSlug && { org_id: audit.orgSlug }),
+      });
       if (!validateResult(result) || result.doc_id !== id) {
         throw new Error('Invalid intelligence extraction response');
       }

@@ -5,65 +5,30 @@ import { fileURLToPath } from 'node:url';
 import { Ajv2020 } from 'ajv/dist/2020.js';
 import addFormats from 'ajv-formats';
 import YAML from 'yaml';
+import type { components } from '../../../../contracts/intelligence.openapi.v1.js';
 
 import { configuredRouting } from '../routing/config.js';
-import type { RoutingPolicy, RoutingRule } from '../routing/engine.js';
 
-interface LegacyRoutingRule {
-  document_type: string;
-  department: string;
-}
-
-export interface OrgConfig {
-  access?: {
-    bootstrap_role: string;
-    registration_role: string;
-    role_permissions: Record<string, string[]>;
-  };
-  upload_defaults?: { department?: string; doc_type?: string; doc_date?: string };
-  languages: string[];
-  ocr_engine: string;
-  document_types: string[];
-  departments: string[];
-  obligation_detection?: Record<
-    string,
-    {
-      cues?: string[];
-      date_patterns?: string[];
-      relative_deadline_patterns?: string[];
-      absolute_deadline_wrappers?: string[];
-    }
-  >;
-  relation_detection?: {
-    reference_cues?: Record<string, string[]>;
-    change_cues?: Record<string, Partial<Record<'supersedes' | 'amends' | 'withdraws', string[]>>>;
-    nonoperative_cues?: Record<string, string[]>;
-    related_document_types?: Record<string, string[]>;
-  };
-  department_aliases?: Record<string, string[]>;
-  roles?: Record<string, { department?: string; aliases?: string[] }>;
-  routing_policy?: RoutingPolicy;
-  routing_rules: (RoutingRule | LegacyRoutingRule)[];
-}
+export type OrgConfig = components['schemas']['org-config.v1.schema'];
 
 export class OrgConfigError extends Error {}
 
 const moduleDirectory = dirname(fileURLToPath(import.meta.url));
 const repositoryRoot = resolve(moduleDirectory, '../../../../');
-const orgConfigSchemaPath = resolve(repositoryRoot, 'contracts/schemas/org-config.v1.schema.json');
+const schemaDirectory = resolve(repositoryRoot, 'contracts/schemas');
 const defaultOrgConfigDirectory = resolve(repositoryRoot, 'config/orgs');
 
 async function validator() {
-  const schema = JSON.parse(await readFile(orgConfigSchemaPath, 'utf8')) as object;
-  const metadata = JSON.parse(
-    await readFile(
-      resolve(repositoryRoot, 'contracts/schemas/upload-metadata.v1.schema.json'),
-      'utf8',
-    ),
-  ) as object;
+  const readSchema = async (filename: string) =>
+    JSON.parse(await readFile(resolve(schemaDirectory, filename), 'utf8')) as object;
+  const [schema, metadata, profile] = await Promise.all([
+    readSchema('org-config.v1.schema.json'),
+    readSchema('upload-metadata.v1.schema.json'),
+    readSchema('summary-profile.v1.schema.json'),
+  ]);
   const ajv = new Ajv2020({ allErrors: true, strict: true });
   addFormats.default(ajv);
-  ajv.addSchema(metadata);
+  ajv.addSchema([metadata, profile]);
   return ajv.compile<OrgConfig>(schema);
 }
 

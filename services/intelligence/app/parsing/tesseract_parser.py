@@ -5,7 +5,7 @@ from collections.abc import Sequence
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
-from intellidocs_intelligence.models import Page, ParseResult
+from intellidocs_intelligence.models import DocumentStructure, Page, ParseResult
 
 from .base import DocumentParser, dependency, result_for
 from .languages import language_codes
@@ -13,11 +13,18 @@ from .ocr_structure import ocr_blocks
 
 
 class TesseractParser(DocumentParser):
-    def __init__(self, executable: str = "tesseract", scale: float = 3.0) -> None:
+    def __init__(
+        self,
+        executable: str = "tesseract",
+        scale: float = 3.0,
+        *,
+        structure: DocumentStructure | None = None,
+    ) -> None:
         if scale <= 0:
             raise ValueError("Render scale must be positive")
         self.executable = executable
         self.scale = scale
+        self.structure = structure
 
     def parse(self, file_path: Path, languages: Sequence[str]) -> ParseResult:
         codes = language_codes(languages)
@@ -77,6 +84,7 @@ class TesseractParser(DocumentParser):
             warnings,
             sizes=sizes,
             languages=languages,
+            structure=self.structure,
         )
 
     def _run(self, arguments: list[str]) -> str:

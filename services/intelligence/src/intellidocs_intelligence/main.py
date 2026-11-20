@@ -1,5 +1,7 @@
 """HTTP entry point for the intelligence service."""
 
+from collections.abc import Callable
+from contextlib import AbstractContextManager
 from typing import Annotated
 from uuid import UUID
 
@@ -14,6 +16,7 @@ from app.relations.service import RelationFactory, relations_from_env
 from app.retrieval.filters import InvalidFilter
 from app.search import SearchFactory, search_from_env
 from app.storage import Storage
+from app.summarization import SummaryService, summarizer_from_env
 
 from .models import (
     Answer,
@@ -27,10 +30,13 @@ from .models import (
     RelationResult,
     SearchRequest,
     SearchResponse,
+    Summary,
+    SummaryRequest,
     UploadMetadata,
 )
 
 app = FastAPI(title="IntelliDocs Intelligence API", version="v1")
+SummaryFactory = Callable[[], AbstractContextManager[SummaryService]]
 
 
 def get_indexing_factory(storage: Annotated[Storage, Depends(storage_from_env)]) -> IndexingFactory:
@@ -54,6 +60,10 @@ def get_extraction_factory(
 
 def get_relation_factory(storage: Annotated[Storage, Depends(storage_from_env)]) -> RelationFactory:
     return lambda: relations_from_env(storage)
+
+
+def get_summary_factory(storage: Annotated[Storage, Depends(storage_from_env)]) -> SummaryFactory:
+    return lambda: summarizer_from_env(storage)
 
 
 @app.get("/health")
@@ -98,7 +108,9 @@ def ingest(
         try:
             with indexing_factory() as indexer:
                 for item in document_tree(result):
-                    response.index_results.append(indexer.index(item.document.id))
+                    response.index_results.append(
+                        indexer.index(item.document.id, org_id=selected_org)
+                    )
         except Exception:
             response.index_error = (
                 "Optional indexing failed; parsed documents remain stored. Retry /v1/index."
@@ -117,7 +129,7 @@ def index_document(
     """Index a stored parse result with batched, cache-aware embeddings."""
     try:
         with indexing_factory() as indexer:
-            return indexer.index(request.doc_id)
+            return indexer.index(request.doc_id, org_id=request.org_id)
     except FileNotFoundError as error:
         raise HTTPException(404, "Stored document not found") from error
     except ValueError as error:
@@ -186,6 +198,27 @@ def answer(
         raise HTTPException(503, "Answer service unavailable") from error
 
 
+@app.post("/v1/summarize", response_model=Summary, response_model_exclude_none=True)
+def summarize(
+    request: SummaryRequest,
+    factory: Annotated[SummaryFactory, Depends(get_summary_factory)],
+) -> Summary:
+    """Summarize a stored document using the assignment snapshot supplied by Core."""
+    try:
+        if str(UUID(request.doc_id)) != request.doc_id:
+            raise FileNotFoundError(request.doc_id)
+        with factory() as service:
+            return service.summarize(request, assigned_obligations=request.assigned_obligations)
+    except FileNotFoundError as error:
+        raise HTTPException(404, "Stored document not found") from error
+    except HTTPException:
+        raise
+    except ValueError as error:
+        raise HTTPException(422, "Summary request could not be applied") from error
+    except Exception as error:
+        raise HTTPException(503, "Summary service unavailable") from error
+
+
 @app.post("/v1/extract-obligations", response_model=ExtractionResult)
 def extract_obligations(
     request: ExtractObligationsRequest,
@@ -194,7 +227,7 @@ def extract_obligations(
     """Extract and verify obligations from the document's indexed chunks."""
     try:
         with factory() as service:
-            return service.extract(request.doc_id)
+            return service.extract(request.doc_id, org_id=request.org_id)
     except FileNotFoundError as error:
         raise HTTPException(404, "Stored document not found") from error
     except IndexNotReady as error:
@@ -213,7 +246,7 @@ def detect_relations(
     """Return evidence-checked relation proposals for an indexed document."""
     try:
         with factory() as service:
-            return service.detect(request.doc_id)
+            return service.detect(request.doc_id, org_id=request.org_id)
     except FileNotFoundError as error:
         raise HTTPException(404, "Stored document not found") from error
     except IndexNotReady as error:

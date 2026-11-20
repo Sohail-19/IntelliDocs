@@ -25,6 +25,16 @@
     "upload_defaults": { "$ref": "upload-metadata.v1.schema.json" },
     "languages": { "type": "array", "minItems": 1, "items": { "type": "string", "minLength": 2 } },
     "ocr_engine": { "type": "string", "minLength": 1 },
+    "document_structure": {
+      "type": "object", "additionalProperties": false,
+      "description": "Optional organization vocabulary for numbered clauses, headings and margin page numbers.",
+      "properties": {
+        "clause_labels": { "type": "array", "items": { "type": "string", "pattern": "\\S" } },
+        "heading_labels": { "type": "array", "items": { "type": "string", "pattern": "\\S" } },
+        "sentence_abbreviations": { "type": "array", "items": { "type": "string", "pattern": "\\S" } },
+        "page_number_patterns": { "type": "array", "items": { "type": "string", "pattern": "\\S" } }
+      }
+    },
     "document_types": { "type": "array", "items": { "type": "string", "minLength": 1 } },
     "departments": { "type": "array", "items": { "type": "string", "minLength": 1 } },
     "department_aliases": {
@@ -41,6 +51,41 @@
         "properties": {
           "department": { "type": "string", "minLength": 1 },
           "aliases": { "type": "array", "items": { "type": "string", "minLength": 1 } }
+        }
+      }
+    },
+    "summary": {
+      "type": "object",
+      "description": "Optional settings and audience profiles for document summaries.",
+      "additionalProperties": false,
+      "required": ["settings"],
+      "properties": {
+        "settings": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["max_length", "style"],
+          "properties": {
+            "max_length": {
+              "type": "integer", "minimum": 1,
+              "description": "Maximum number of Unicode code points across all summary point texts."
+            },
+            "style": { "type": "string", "enum": ["bullets", "short_paragraph"] }
+          }
+        },
+        "department_profiles": {
+          "type": "object",
+          "description": "Profiles keyed by canonical department names in departments.",
+          "additionalProperties": { "$ref": "summary-profile.v1.schema.json" }
+        },
+        "role_profiles": {
+          "type": "object",
+          "description": "Profiles keyed by canonical role names in roles.",
+          "additionalProperties": { "$ref": "summary-profile.v1.schema.json" }
+        },
+        "not_relevant_reasons": {
+          "type": "object",
+          "description": "Localized reason for an empty summary, keyed by requested language.",
+          "additionalProperties": { "type": "string", "pattern": "\\S" }
         }
       }
     },

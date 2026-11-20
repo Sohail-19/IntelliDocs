@@ -259,6 +259,46 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/summarize": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** @description Contract for a cited summary of one document tailored to a configured department or role. */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["summary-request.v1.schema"];
+                };
+            };
+            responses: {
+                /** @description Audience-specific summary with citations and relevance metadata */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["summary.v1.schema"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/extract-obligations": {
         parameters: {
             query?: never;
@@ -350,6 +390,117 @@ export interface components {
             warnings?: string[];
             stats?: components["schemas"]["extraction-stats.v1.schema"];
         };
+        /** OrgConfig v1 */
+        "org-config.v1.schema": {
+            access?: {
+                bootstrap_role: string;
+                registration_role: string;
+                role_permissions: {
+                    [key: string]: string[];
+                };
+            };
+            upload_defaults?: components["schemas"]["upload-metadata.v1.schema"];
+            languages: string[];
+            ocr_engine: string;
+            /** @description Optional organization vocabulary for numbered clauses, headings and margin page numbers. */
+            document_structure?: {
+                clause_labels?: string[];
+                heading_labels?: string[];
+                sentence_abbreviations?: string[];
+                page_number_patterns?: string[];
+            };
+            document_types: string[];
+            departments: string[];
+            /** @description Alternate owner names keyed by a canonical department name. */
+            department_aliases?: {
+                [key: string]: string[];
+            };
+            /** @description Canonical role names with optional department and aliases. */
+            roles?: {
+                [key: string]: {
+                    department?: string;
+                    aliases?: string[];
+                };
+            };
+            /** @description Optional settings and audience profiles for document summaries. */
+            summary?: {
+                settings: {
+                    /** @description Maximum number of Unicode code points across all summary point texts. */
+                    max_length: number;
+                    /** @enum {string} */
+                    style: "bullets" | "short_paragraph";
+                };
+                /** @description Profiles keyed by canonical department names in departments. */
+                department_profiles?: {
+                    [key: string]: components["schemas"]["summary-profile.v1.schema"];
+                };
+                /** @description Profiles keyed by canonical role names in roles. */
+                role_profiles?: {
+                    [key: string]: components["schemas"]["summary-profile.v1.schema"];
+                };
+                /** @description Localized reason for an empty summary, keyed by requested language. */
+                not_relevant_reasons?: {
+                    [key: string]: string;
+                };
+            };
+            /** @description Candidate detection settings keyed by a language from languages. */
+            obligation_detection?: {
+                [key: string]: {
+                    cues?: string[];
+                    date_patterns?: string[];
+                    relative_deadline_patterns?: string[];
+                    absolute_deadline_wrappers?: string[];
+                };
+            };
+            /** @description Candidate finding vocabulary and similarity type matches for this organization. */
+            relation_detection?: {
+                /** @description Literal reference cues keyed by a language from languages. */
+                reference_cues?: {
+                    [key: string]: string[];
+                };
+                /** @description Literal explicit-change phrases keyed by language and relation type. */
+                change_cues?: {
+                    [key: string]: {
+                        supersedes?: string[];
+                        amends?: string[];
+                        withdraws?: string[];
+                    };
+                };
+                /** @description Phrases that indicate a negated, proposed, or conditional change, keyed by language. */
+                nonoperative_cues?: {
+                    [key: string]: string[];
+                };
+                /** @description Additional target types eligible for similarity, keyed by source document type. */
+                related_document_types?: {
+                    [key: string]: string[];
+                };
+            };
+            routing_policy?: {
+                min_confidence: number;
+                review_role: string;
+            };
+            routing_rules: ({
+                id: string;
+                priority: number;
+                conditions: {
+                    /** @enum {string} */
+                    obligation_type?: "duty" | "prohibition" | "reporting" | "payment" | "review" | "other";
+                    owner_department?: string;
+                    document_type?: string;
+                    keywords?: string[];
+                    deadline_within_days?: number;
+                };
+                target: {
+                    /** @enum {string} */
+                    kind: "user" | "role_queue" | "department_queue";
+                    value: string;
+                };
+                escalation_after_days?: number;
+            } | {
+                document_type: string;
+                department: string;
+            })[];
+        };
         /** Ingest request v1 */
         "ingest-request.v1.schema": {
             /**
@@ -427,6 +578,8 @@ export interface components {
         /** IndexRequest v1 */
         "index-request.v1.schema": {
             doc_id: string;
+            /** @description Authenticated Core organization; a document in another organization is treated as missing. */
+            org_id?: string;
         };
         /** Search request v1 */
         "search-request.v1.schema": {
@@ -528,10 +681,6 @@ export interface components {
             model: string;
             verifier_version: string;
         };
-        /** Extract obligations request v1 */
-        "extract-obligations-request.v1.schema": {
-            doc_id: string;
-        };
         /** Obligation owner v1 */
         "obligation-owner.v1.schema": {
             /** @description Owner wording copied from the document, or empty when absent. */
@@ -592,6 +741,58 @@ export interface components {
             citations: components["schemas"]["citation.v1.schema"][];
             extractor_version: string;
         });
+        /** SummaryRequest v1 */
+        "summary-request.v1.schema": {
+            doc_id: string;
+            /** @description Organization of the authenticated Core caller. */
+            org_id?: string;
+            /** @description Active, authorized obligations selected by Core. */
+            assigned_obligations?: components["schemas"]["obligation.v1.schema"][];
+            department?: string | null;
+            role?: string | null;
+            /** @description Requested summary language. */
+            language: string;
+        } & ({
+            department: string;
+        } | {
+            role: string;
+        });
+        /** Summary v1 */
+        "summary.v1.schema": {
+            doc_id: string;
+            audience: {
+                department?: string | null;
+                role?: string | null;
+            } & ({
+                department: string;
+            } | {
+                role: string;
+            });
+            language: string;
+            points: {
+                text: string;
+                /** @description Present on points copied from the supplied obligation snapshot. */
+                obligation_id?: string;
+                /**
+                 * Format: date
+                 * @description Resolved due date for a stored obligation point.
+                 */
+                due_date?: string;
+                citations: components["schemas"]["citation.v1.schema"][];
+            }[];
+            not_relevant: boolean;
+            /** @description Explanation of the relevance decision, or an empty string when there is no reason. */
+            relevance_reason: string;
+            /** @description Identifier for the generator that produced the summary. */
+            generated_by: string;
+            verifier_version: string;
+        };
+        /** Extract obligations request v1 */
+        "extract-obligations-request.v1.schema": {
+            doc_id: string;
+            /** @description Authenticated Core organization; a document in another organization is treated as missing. */
+            org_id?: string;
+        };
         /**
          * Extraction stats v1
          * @description Counts of returned obligations, with a counter for each extraction status.
@@ -613,6 +814,8 @@ export interface components {
         /** DetectRelationsRequest v1 */
         "detect-relations-request.v1.schema": {
             doc_id: string;
+            /** @description Authenticated Core organization; a document in another organization is treated as missing. */
+            org_id?: string;
         };
         /** DocumentRelation v1 */
         "document-relation.v1.schema": {
@@ -652,6 +855,24 @@ export interface components {
             doc_id: string;
             relations: components["schemas"]["document-relation.v1.schema"][];
             warnings: string[];
+        };
+        /** Explicit upload metadata v1 */
+        "upload-metadata.v1.schema": {
+            department?: string;
+            doc_type?: string;
+            /** Format: date */
+            doc_date?: string;
+        };
+        /** SummaryProfile v1 */
+        "summary-profile.v1.schema": {
+            focus_topics: string[];
+            responsibilities: string[];
+            /** @description For each configured language, map canonical terms to a list of aliases in that language. */
+            glossary: {
+                [key: string]: {
+                    [key: string]: string[];
+                };
+            };
         };
     };
     responses: never;

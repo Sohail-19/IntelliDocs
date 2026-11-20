@@ -10,7 +10,52 @@ const examplePath = resolve(import.meta.dirname, '../../../config/orgs/example.y
 
 describe('organization config loader', () => {
   it('accepts the shared example config', async () => {
-    await expect(loadOrgConfig(examplePath)).resolves.toMatchObject({ languages: ['en', 'hi'] });
+    const config = await loadOrgConfig(examplePath);
+    expect(config.languages).toEqual(['en', 'hi']);
+    expect(Object.keys(config.summary?.department_profiles ?? {}).sort()).toEqual(
+      [...config.departments].sort(),
+    );
+    expect(config.summary).toMatchObject({
+      settings: { max_length: 600, style: 'bullets' },
+      role_profiles: {
+        finance_officer: { glossary: { en: { invoice: ['bill', 'supplier invoice'] } } },
+      },
+    });
+  });
+
+  it('accepts legacy org configs and rejects malformed summary profiles', async () => {
+    const directory = await mkdtemp(resolve(tmpdir(), 'intellidocs-config-'));
+    const path = resolve(directory, 'summary.yaml');
+    const legacy = {
+      languages: ['en'],
+      ocr_engine: 'test',
+      document_types: ['agreement'],
+      departments: ['legal'],
+      routing_rules: [],
+    };
+    try {
+      await writeFile(path, JSON.stringify(legacy));
+      await expect(loadOrgConfig(path)).resolves.toEqual(legacy);
+      await writeFile(
+        path,
+        JSON.stringify({
+          ...legacy,
+          summary: {
+            settings: { max_length: 100, style: 'short_paragraph' },
+            department_profiles: {
+              legal: {
+                focus_topics: ['Liability'],
+                responsibilities: [],
+                glossary: { en: { liability: 'risk' } },
+              },
+            },
+          },
+        }),
+      );
+      await expect(loadOrgConfig(path)).rejects.toThrow('Invalid organization config');
+    } finally {
+      await rm(directory, { recursive: true });
+    }
   });
 
   it('rejects a config that violates the contract', async () => {

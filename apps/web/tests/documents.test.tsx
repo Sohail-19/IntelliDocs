@@ -7,6 +7,7 @@ import type {
   AuthProfile,
   AuthTokens,
   DocumentRecord,
+  DocumentSummary,
   DocumentUploadOptions,
 } from '../../../contracts/core-api.v1.js';
 import { createClient } from '../src/api.js';
@@ -56,13 +57,15 @@ function json(body: unknown, status = 200) {
 async function show(
   path: string,
   handler: (path: string, init?: RequestInit) => Promise<Response>,
+  authProfile = profile,
 ) {
   const fetcher = vi.fn<typeof fetch>((url, init) => {
-    const endpoint = new URL(typeof url === 'string' ? url : '').pathname;
+    const parsed = new URL(typeof url === 'string' ? url : '');
+    const endpoint = parsed.pathname;
     if (endpoint === '/api/auth/login') return json(access);
-    if (endpoint === '/api/auth/me') return json(profile);
+    if (endpoint === '/api/auth/me') return json(authProfile);
     if (endpoint === '/api/documents/upload-options') return json(options);
-    return handler(endpoint, init);
+    return handler(endpoint + parsed.search, init);
   });
   const client = createClient('https://core.example.test', fetcher);
   await client.login({ org_id: 'example', email: 'fixture@example.test', password: 'fixture' });
@@ -186,6 +189,8 @@ it('shows a processing error on the detail page and reloads obligations after re
       case '/api/documents/doc-one/index':
         completed = true;
         return json({});
+      case '/api/documents/doc-one/summary':
+        return json({ summary: null, authority_warnings: [] });
       case '/api/documents/doc-one/obligations':
         return json({
           extraction_status: completed ? 'completed' : 'failed',
@@ -217,4 +222,136 @@ it('shows a processing error on the detail page and reloads obligations after re
     'https://core.example.test/api/documents/doc-one/index',
     expect.objectContaining({ method: 'POST' }),
   );
+});
+
+const source = {
+  doc_id: 'doc-one',
+  page: 2,
+  char_start: 0,
+  char_end: 15,
+  quote: 'File a report.',
+  clause_number: '4',
+};
+const summary: NonNullable<DocumentSummary['summary']> = {
+  doc_id: 'doc-one',
+  audience: { department: 'Legal' },
+  language: 'en',
+  points: [
+    {
+      text: 'File a report — 2026-11-30',
+      obligation_id: 'obl-one',
+      due_date: '2026-11-30',
+      citations: [source],
+    },
+    { text: 'Reports must include expenses', citations: [source] },
+  ],
+  not_relevant: false,
+  relevance_reason: '',
+  generated_by: 'example',
+  verifier_version: 'example',
+};
+const reader = { ...profile, permissions: ['documents:upload'] };
+
+it('loads the reader summary automatically with obligations, source chips, and the newer document link', async () => {
+  let finish: (response: Response) => void = () => {};
+  const pending = new Promise<Response>((resolve) => {
+    finish = resolve;
+  });
+  await show(
+    '/documents/doc-one',
+    (path) => {
+      if (path === '/api/documents/doc-one') return json({ document: ready });
+      if (path === '/api/documents/doc-one/summary') return pending;
+      if (path === '/api/documents/doc-one/source') return json({ error: 'No PDF' }, 415);
+      throw new Error(path);
+    },
+    reader,
+  );
+  const panel = within(await screen.findByRole('region', { name: 'For you' }));
+  expect(panel.getByRole('status')).toHaveTextContent('Loading summary');
+  finish(
+    Response.json({
+      summary,
+      authority_warnings: [
+        {
+          doc_id: 'doc-one',
+          newer_doc_id: 'newer',
+          relation_id: 'rel',
+          status: 'partially_amended',
+          message: 'Newer document amends the original.',
+        },
+      ],
+    }),
+  );
+  expect(await panel.findByText('Reports must include expenses')).toBeVisible();
+  expect(panel.getByRole('heading', { name: 'Your obligations' })).toBeVisible();
+  expect(panel.getByText('2026-11-30')).toHaveAttribute('datetime', '2026-11-30');
+  expect(panel.getByRole('link', { name: 'View newer document' })).toHaveAttribute(
+    'href',
+    '/documents/newer',
+  );
+  expect(panel.queryByRole('button', { name: 'Preview summary' })).not.toBeInTheDocument();
+  await userEvent.setup().click(panel.getAllByRole('button', { name: 'Page 2 · Clause 4' })[0]!);
+  const dialog = within(await screen.findByRole('dialog', { name: 'Source citation' }));
+  expect(dialog.getByText('File a report.')).toBeVisible();
+});
+
+it('shows an error and retries to an empty state', async () => {
+  let reads = 0;
+  await show(
+    '/documents/doc-one',
+    (path) => {
+      if (path === '/api/documents/doc-one') return json({ document: ready });
+      if (path !== '/api/documents/doc-one/summary') throw new Error(path);
+      if (++reads === 1) return json({ error: 'Summary timeout' }, 502);
+      return json({ summary: null, authority_warnings: [] });
+    },
+    reader,
+  );
+  const panel = within(await screen.findByRole('region', { name: 'For you' }));
+  expect(await panel.findByRole('alert')).toHaveTextContent('Summary timeout');
+  await userEvent.setup().click(panel.getByRole('button', { name: 'Try again' }));
+  expect(await panel.findByRole('heading', { name: 'No summary available' })).toBeVisible();
+});
+
+it('lets a manager deliberately preview another audience and return to their own summary', async () => {
+  const fetcher = await show(
+    '/documents/doc-one',
+    (path) => {
+      if (path === '/api/documents/doc-one') return json({ document: ready });
+      if (path === '/api/documents/doc-one/summary')
+        return json({
+          summary,
+          authority_warnings: [],
+          preview_options: {
+            departments: ['Legal', 'Operations'],
+            roles: [{ name: 'operator', department: 'Operations' }],
+          },
+        });
+      if (path === '/api/documents/doc-one/summary?department=Operations&role=operator')
+        return json({
+          summary: {
+            ...summary,
+            audience: { department: 'Operations', role: 'operator' },
+            points: [],
+            not_relevant: true,
+            relevance_reason: 'This document sets no operating procedures.',
+          },
+          authority_warnings: [],
+        });
+      throw new Error(path);
+    },
+    { ...reader, permissions: [...reader.permissions, 'documents:summary-preview'] },
+  );
+  const user = userEvent.setup();
+  await user.selectOptions(await screen.findByLabelText('Preview department'), 'Operations');
+  await user.selectOptions(screen.getByLabelText('Preview role'), 'operator');
+  expect(
+    fetcher.mock.calls.some(([url]) => typeof url === 'string' && url.includes('?department=')),
+  ).toBe(false);
+  await user.click(screen.getByRole('button', { name: 'Preview summary' }));
+  expect(await screen.findByRole('heading', { name: 'Not relevant to your role' })).toBeVisible();
+  expect(screen.getByText('This document sets no operating procedures.')).toBeVisible();
+  await user.click(screen.getByRole('button', { name: 'Back to my summary' }));
+  expect(screen.getByText('Reports must include expenses')).toBeVisible();
 });

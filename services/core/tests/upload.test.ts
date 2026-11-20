@@ -69,8 +69,8 @@ describe('core upload flow', () => {
     expect(await call[0].file.text()).toBe('original message');
     expect(save).toHaveBeenCalledWith(response, expect.objectContaining({ orgId: 42 }));
     expect((ingest.mock.calls[0] as [{ index: boolean }])[0].index).toBe(false);
-    expect(index).toHaveBeenNthCalledWith(1, { doc_id: 'parent' });
-    expect(index).toHaveBeenNthCalledWith(2, { doc_id: 'child' });
+    expect(index).toHaveBeenNthCalledWith(1, { doc_id: 'parent', org_id: 'example' });
+    expect(index).toHaveBeenNthCalledWith(2, { doc_id: 'child', org_id: 'example' });
     expect(setStatus).toHaveBeenCalledWith(
       'parent',
       expect.objectContaining({ orgId: 42 }),

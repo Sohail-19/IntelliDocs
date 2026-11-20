@@ -1,0 +1,6 @@
+The previous summary did not match OUTPUT_SCHEMA. Return only the requested JSON
+object with a points array. Each point must contain text, chunk_id, and an exact
+quote. Return an empty points array if the evidence supports no additional point.
+Attempt $attempt.
+
+$original_prompt

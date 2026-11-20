@@ -23,7 +23,10 @@ export function runDetection(
 ): DetectRelations {
   return async (id, audit) => {
     try {
-      const result: unknown = await detect({ doc_id: id });
+      const result: unknown = await detect({
+        doc_id: id,
+        ...(audit.orgSlug && { org_id: audit.orgSlug }),
+      });
       if (!validate(result) || result.doc_id !== id) throw new Error('Invalid relation response');
       const ids = new Set<string>();
       for (const item of result.relations) {

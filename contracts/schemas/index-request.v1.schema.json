@@ -5,5 +5,8 @@
   "type": "object",
   "additionalProperties": false,
   "required": ["doc_id"],
-  "properties": { "doc_id": { "type": "string", "minLength": 1 } }
+  "properties": {
+    "doc_id": { "type": "string", "minLength": 1 },
+    "org_id": { "type": "string", "pattern": "^[A-Za-z0-9_-]+$", "description": "Authenticated Core organization; a document in another organization is treated as missing." }
+  }
 }

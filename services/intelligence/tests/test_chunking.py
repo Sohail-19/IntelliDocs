@@ -263,7 +263,7 @@ def test_sentence_spans_preserve_abbreviations_numbers_and_danda() -> None:
         "यह पहला वाक्य है। यह दूसरा वाक्य है।",
     ]
     for text in texts:
-        assert len(sentence_spans(text)) == 2
+        assert len(sentence_spans(text, ["Dr."])) == 2
 
 
 def test_configuration_is_explicit_and_counting_is_selectable() -> None:

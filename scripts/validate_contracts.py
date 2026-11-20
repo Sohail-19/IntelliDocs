@@ -62,7 +62,7 @@ def validate_schema(schema: Any, path: Path, schemas: dict[Path, dict[str, Any]]
         node_type = node.get("type")
         if node_type is not None and node_type not in {"object", "array", "string", "integer", "number", "boolean", "null"}:
             raise ContractError(f"{path.relative_to(ROOT)}: unsupported type {node_type!r}")
-        for keyword in ("oneOf", "anyOf"):
+        for keyword in ("oneOf", "anyOf", "allOf"):
             if keyword in node:
                 alternatives = node[keyword]
                 if not isinstance(alternatives, list) or not alternatives or not all(isinstance(child, dict) for child in alternatives):
@@ -97,7 +97,7 @@ def instance_type_matches(value: Any, expected: str) -> bool:
 
 
 def validate_instance(instance: Any, schema: dict[str, Any], source: Path, schema_path: Path, schemas: dict[Path, dict[str, Any]], location: str = "$") -> None:
-    for keyword in ("oneOf", "anyOf"):
+    for keyword in ("oneOf", "anyOf", "allOf"):
         if keyword in schema:
             matches = 0
             for alternative in schema[keyword]:
@@ -106,7 +106,11 @@ def validate_instance(instance: Any, schema: dict[str, Any], source: Path, schem
                 except ContractError:
                     continue
                 matches += 1
-            if matches == 0 or (keyword == "oneOf" and matches != 1):
+            if (
+                matches == 0
+                or (keyword == "oneOf" and matches != 1)
+                or (keyword == "allOf" and matches != len(schema[keyword]))
+            ):
                 raise ContractError(f"{source.relative_to(ROOT)}: {location} does not match {keyword}")
     if "$ref" in schema:
         target = (schema_path.parent / schema["$ref"]).resolve()
@@ -183,6 +187,7 @@ def validate_openapi(schemas: dict[Path, dict[str, Any]]) -> None:
         "/v1/index": "post",
         "/v1/search": "post",
         "/v1/answer": "post",
+        "/v1/summarize": "post",
         "/v1/extract-obligations": "post",
         "/v1/detect-relations": "post",
     }

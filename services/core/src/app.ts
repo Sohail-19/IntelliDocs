@@ -11,6 +11,8 @@ import { configuredCors } from './cors.js';
 import type { OrgConfig } from './config/loader.js';
 import { documentRouter } from './document-routes.js';
 import type { DocumentBrowser } from './document-routes.js';
+import { documentSummaryRouter } from './document-summary.js';
+import type { PreviewAudit } from './document-summary.js';
 import type { IntelligenceClient } from './intelligence/client.js';
 import { obligationRouter, runExtraction } from './obligation-routes.js';
 import { organisationRouter } from './organisation.js';
@@ -33,7 +35,7 @@ type AppDependencies = UploadDependencies & {
   intelligence: Partial<
     Pick<
       IntelligenceClient,
-      'search' | 'answer' | 'extractObligations' | 'pdfSource' | 'detectRelations'
+      'search' | 'answer' | 'summarize' | 'extractObligations' | 'pdfSource' | 'detectRelations'
     >
   >;
   obligations?: ObligationRepository;
@@ -44,6 +46,7 @@ type AppDependencies = UploadDependencies & {
   reviews?: ObligationReviewRepository;
   relations?: PostgresRelationRepository;
   documentBrowser?: DocumentBrowser;
+  summaryPreviewAudit?: PreviewAudit;
 };
 
 export function createApp(
@@ -95,6 +98,7 @@ export function createApp(
           auth
             ? async (actor, id) => {
                 if (
+                  auth.allows(actor, 'documents:upload') ||
                   auth.allows(actor, 'documents:search') ||
                   auth.allows(actor, 'documents:answer')
                 )
@@ -119,6 +123,28 @@ export function createApp(
       );
     }
     const { intelligence } = dependencies;
+    if (
+      dependencies.documentBrowser &&
+      dependencies.orgConfigs &&
+      dependencies.obligations &&
+      intelligence.summarize &&
+      dependencies.summaryPreviewAudit
+    ) {
+      app.use(
+        documentSummaryRouter(
+          {
+            reader: dependencies.documentBrowser.reader,
+            configs: dependencies.orgConfigs,
+            listObligations: dependencies.obligations.list.bind(dependencies.obligations),
+            summarize: intelligence.summarize.bind(intelligence),
+            canPreview: (actor) => auth?.allows(actor, 'documents:summary-preview') ?? false,
+            auditPreview: dependencies.summaryPreviewAudit,
+            relations: dependencies.relations,
+          },
+          guard,
+        ),
+      );
+    }
     const extraction =
       dependencies.obligations && intelligence.extractObligations
         ? runExtraction(

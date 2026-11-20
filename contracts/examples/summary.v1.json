@@ -1,0 +1,25 @@
+{
+  "doc_id": "doc-001",
+  "audience": { "department": "finance", "role": "finance_officer" },
+  "language": "en",
+  "points": [
+    {
+      "text": "Track the monthly report.",
+      "citations": [
+        {
+          "doc_id": "doc-001",
+          "page": 1,
+          "char_start": 15,
+          "char_end": 39,
+          "quote": "Submit a monthly report.",
+          "clause_number": "1.1",
+          "heading_path": ["Agreement"]
+        }
+      ]
+    }
+  ],
+  "not_relevant": false,
+  "relevance_reason": "The agreement sets a recurring reporting obligation.",
+  "generated_by": "example-generator",
+  "verifier_version": "example-v1"
+}

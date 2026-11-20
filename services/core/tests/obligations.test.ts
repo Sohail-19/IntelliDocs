@@ -103,7 +103,7 @@ describe('obligation routes', () => {
     expect(setStatus.mock.invocationCallOrder[0]).toBeLessThan(
       extractObligations.mock.invocationCallOrder[0] ?? 0,
     );
-    expect(extractObligations).toHaveBeenCalledWith({ doc_id: 'doc-a' });
+    expect(extractObligations).toHaveBeenCalledWith({ doc_id: 'doc-a', org_id: 'example' });
     expect(repository.replace).toHaveBeenCalledWith(
       extraction,
       expect.objectContaining({ orgId: 42 }),

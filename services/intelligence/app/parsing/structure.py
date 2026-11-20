@@ -4,16 +4,12 @@ import re
 from collections import defaultdict
 from collections.abc import Sequence
 
-from intellidocs_intelligence.models import Page, TableBlock, TextBlock
+from intellidocs_intelligence.models import DocumentStructure, Page, TableBlock, TextBlock
 
 from .languages import detected_language
 
-CLAUSE = re.compile(
-    r"^\s*(?P<number>(?:Clause|Article|Section)\s+(?:\d+(?:\.\d+)*|[IVXLCDM]+)\b"
-    r"|\([a-zA-Zivxlcdm]+\)|\d+(?:\.\d+)+\.?|\d+\.)(?=\s|$)",
-    re.IGNORECASE,
-)
-PAGE_NUMBER = re.compile(r"^(?:page\s+)?(?:\d+|[ivxlcdm]+)(?:\s+(?:of|/)\s+\d+)?$", re.I)
+NUMERIC_CLAUSE = r"\([A-Z]+\)|\d+(?:\.\d+)+\.?|\d+\."
+PAGE_NUMBER = re.compile(r"(?:\d+|[ivxlcdm]+)(?:\s*/\s*\d+)?", re.I)
 
 
 def content_text(page: Page) -> str:
@@ -31,7 +27,19 @@ def preserve_structure(
     pages: list[Page],
     sizes: dict[int, tuple[float, float]],
     languages: Sequence[str],
+    structure: DocumentStructure | None = None,
 ) -> list[Page]:
+    settings = structure or DocumentStructure()
+    labels = sorted(set(settings.clause_labels + settings.heading_labels), key=len, reverse=True)
+    named = r"(?P<label>" + "|".join(map(re.escape, labels)) + r")\s+(?:\d+(?:\.\d+)*|[IVXLCDM]+)\b"
+    clause = re.compile(
+        r"^\s*(?P<number>" + (named + "|" if labels else "") + NUMERIC_CLAUSE + r")(?=\s|$)", re.I
+    )
+    heading_labels = {label.casefold() for label in settings.heading_labels}
+    page_numbers = [
+        PAGE_NUMBER,
+        *(re.compile(pattern, re.I) for pattern in settings.page_number_patterns),
+    ]
     output = [page.model_copy(deep=True) for page in pages]
     occurrences: dict[tuple[str, str], set[int]] = defaultdict(set)
 
@@ -61,7 +69,10 @@ def preserve_structure(
             if (
                 block.type != "table"
                 and zone
-                and (repeated or PAGE_NUMBER.fullmatch(block.text.strip()))
+                and (
+                    repeated
+                    or any(pattern.fullmatch(block.text.strip()) for pattern in page_numbers)
+                )
             ):
                 page.blocks[order] = block = TextBlock(
                     type="header_footer",
@@ -77,10 +88,10 @@ def preserve_structure(
             if isinstance(block, TableBlock):
                 block.text = ""
             else:
-                match = CLAUSE.match(block.text)
+                match = clause.match(block.text)
                 if match:
                     block.clause_number = match["number"]
-                    if re.match(r"^(Article|Section)\s", match["number"], re.I):
+                    if labels and (match["label"] or "").casefold() in heading_labels:
                         block.type = "heading"
                     if block.type not in {"heading", "list_item"}:
                         block.type = "clause"

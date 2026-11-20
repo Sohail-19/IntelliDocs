@@ -1,5 +1,5 @@
 import { createApp } from './app.js';
-import { PostgresAuditReader } from './audit.js';
+import { inTransaction, PostgresAuditReader, writeAudit } from './audit.js';
 import { orgPolicy } from './auth/policy.js';
 import { PostgresAuthRepository } from './auth/repository.js';
 import { AuthService, authSettingsFromEnv } from './auth/service.js';
@@ -62,6 +62,8 @@ async function start(): Promise<void> {
         reviews: new ObligationReviewRepository(pool, routing, orgConfigs),
         relations: new PostgresRelationRepository(pool),
         audit: new PostgresAuditReader(pool),
+        summaryPreviewAudit: (context, event) =>
+          inTransaction(pool, (transaction) => writeAudit(transaction, context, event)),
       },
       { auth },
     ).listen(port, () => {

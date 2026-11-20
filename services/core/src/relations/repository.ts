@@ -374,9 +374,11 @@ export class PostgresRelationRepository {
   }
 
   confirmedChanges(orgId: number, citations: Citation[]) {
-    return readConfirmedChanges(this.pool, orgId, [
-      ...new Set(citations.map((citation) => citation.doc_id)),
-    ]);
+    return this.documentChanges(orgId, [...new Set(citations.map((citation) => citation.doc_id))]);
+  }
+
+  documentChanges(orgId: number, docIds: string[]) {
+    return readConfirmedChanges(this.pool, orgId, docIds);
   }
 
   private async refreshAuthority(client: PoolClient, id: string, audit: AuditContext) {

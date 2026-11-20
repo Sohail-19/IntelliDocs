@@ -23,16 +23,16 @@ def _parse_date(value: str, field: str) -> date:
     raise InvalidFilter(f"{field} must be a calendar date in YYYY-MM-DD format")
 
 
-def payload_filter(filters: Mapping[str, str] | None) -> models.Filter | None:
-    if not filters:
-        return None
-    values = dict(filters)
+def payload_filter(filters: Mapping[str, str] | None) -> models.Filter:
+    values = dict(filters or {})
     if "document_type" in values:
         # The v1 search example uses document_type. The Chunk uses doc_type.
         alias = values.pop("document_type")
         if values.setdefault("doc_type", alias) != alias:
             raise InvalidFilter("doc_type and document_type filters disagree")
     conditions: list[models.Condition] = []
+    if "org_id" not in values:
+        conditions.append(models.IsEmptyCondition(is_empty=models.PayloadField(key="org_id")))
     for field, value in sorted(values.items()):
         if field not in KEYWORD_FIELDS | DATE_FIELDS:
             raise InvalidFilter(f"Unsupported retrieval filter: {field}")

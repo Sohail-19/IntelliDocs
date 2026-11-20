@@ -4,16 +4,23 @@ from collections.abc import Sequence
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
-from intellidocs_intelligence.models import Page, ParseResult
+from intellidocs_intelligence.models import DocumentStructure, Page, ParseResult
 
 from .base import DocumentParser, dependency, result_for
 from .languages import language_codes
 
 
 class ParsingRouter(DocumentParser):
-    def __init__(self, digital: DocumentParser, ocr: DocumentParser) -> None:
+    def __init__(
+        self,
+        digital: DocumentParser,
+        ocr: DocumentParser,
+        *,
+        structure: DocumentStructure | None = None,
+    ) -> None:
         self.digital = digital
         self.ocr = ocr
+        self.structure = structure
 
     def parse(self, file_path: Path, languages: Sequence[str]) -> ParseResult:
         language_codes(languages)
@@ -52,4 +59,5 @@ class ParsingRouter(DocumentParser):
             ],
             sizes=sizes,
             languages=languages,
+            structure=self.structure,
         )

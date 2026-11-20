@@ -78,11 +78,12 @@ covered in the [core service README](services/core/README.md).
 | `POST /v1/upload` | `documents:upload` |
 | `GET /api/documents` | `documents:upload` |
 | `GET /api/documents/upload-options` | `documents:upload` |
-| `GET /api/documents/:id` | `documents:upload` |
+| `GET /api/documents/:id` | `documents:upload`, `documents:search`, or `documents:answer` |
+| `GET /api/documents/:id/summary` | Document access, plus `documents:summary-preview` for audience overrides |
 | `POST /api/documents/:id/index` | `documents:upload` |
 | `GET /api/search` | `documents:search` |
 | `GET /api/search/options` | `documents:search` or `documents:answer` |
-| `GET /api/documents/:id/source` | Search or answer permission, visible task, or pending review access |
+| `GET /api/documents/:id/source` | Document access, visible task, or review access |
 | `GET /api/answer` | `documents:answer` |
 | `GET /api/obligations` | `obligations:read` |
 | `GET /api/documents/:id/obligations` | `obligations:read` |
@@ -111,6 +112,7 @@ grants in the bundled example org.
 | Permissions | Roles |
 | --- | --- |
 | `documents:search`, `documents:answer`, `obligations:read`, `tasks:read` | `admin`, `manager`, `officer`, `finance_officer`, `viewer` |
+| `documents:summary-preview` | `admin`, `manager` |
 | `documents:upload`, `tasks:transition` | `admin`, `manager`, `officer`, `finance_officer` |
 | `audit:read`, `org:read`, `obligations:extract`, `obligations:status`, `obligations:assign`, `obligations:review`, `relations:review` | `admin`, `manager` |
 | `users:register`, `users:roles` | `admin` |
@@ -125,6 +127,7 @@ grants in the bundled example org.
 | `GET /v1/documents/{doc_id}/source` | Return the original PDF for the given organization |
 | `POST /v1/search` | Retrieve cited document chunks |
 | `POST /v1/answer` | Generate and verify a grounded answer |
+| `POST /v1/summarize` | Generate a verified summary for a document audience |
 | `POST /v1/extract-obligations` | Extract, verify, and resolve obligations |
 | `POST /v1/detect-relations` | Propose relations with evidence from both documents |
 

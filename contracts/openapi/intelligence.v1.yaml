@@ -3,7 +3,8 @@
   "info": { "title": "IntelliDocs Intelligence API", "version": "v1" },
   "components": {
     "schemas": {
-      "extract-obligations-response.v1.schema": { "$ref": "../schemas/extract-obligations-response.v1.schema.json" }
+      "extract-obligations-response.v1.schema": { "$ref": "../schemas/extract-obligations-response.v1.schema.json" },
+      "org-config.v1.schema": { "$ref": "../schemas/org-config.v1.schema.json" }
     }
   },
   "paths": {
@@ -61,6 +62,15 @@
         "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "../schemas/answer-request.v1.schema.json" } } } },
         "responses": {
           "200": { "description": "Answer with claims and abstention metadata", "content": { "application/json": { "schema": { "$ref": "../schemas/answer.v1.schema.json" } } } }
+        }
+      }
+    },
+    "/v1/summarize": {
+      "post": {
+        "description": "Contract for a cited summary of one document tailored to a configured department or role.",
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "../schemas/summary-request.v1.schema.json" } } } },
+        "responses": {
+          "200": { "description": "Audience-specific summary with citations and relevance metadata", "content": { "application/json": { "schema": { "$ref": "../schemas/summary.v1.schema.json" } } } }
         }
       }
     },

@@ -65,6 +65,9 @@ milliseconds for retrieval, reranking, and citation construction.
 Indexed Chunk v1 payloads may include `org_id` from the stored ParseResult.
 The search and answer filter maps accept `org_id` as an exact match. Core sets
 that filter from the authenticated account on every request to either endpoint.
+Without this filter, retrieval only considers legacy chunks without an org ID.
+Core also sends `org_id` for indexing, extraction, relation detection, and
+summaries. Intelligence treats a document in a different organization as missing.
 
 The Phase 4 answer contract defines `POST /v1/answer` with an `AnswerRequest`
 body and an `Answer` response. Requests require a nonblank `query`, `top_k`
@@ -139,3 +142,23 @@ on each proposal. The four breakdown fields contribute to `confidence`.
 A proposal can carry an empty citation list on a side where verification
 failed. Confirmed relations require citations on both sides and cannot
 carry `needs_review: true`.
+
+`POST /v1/summarize` defines a cited summary of one document. Supply `doc_id`,
+`language`, and a canonical `department`, `role`, or both. An unused selector
+may be omitted or set to `null`. The response echoes the document, language,
+and audience. Every point includes at least one Citation v1 from the document.
+Core supplies `org_id` for document ownership checks and `assigned_obligations`
+for current, authorized assignments. Stored obligation points carry an
+`obligation_id` and a `due_date` when resolved.
+When `not_relevant` is true, `points` is empty and `relevance_reason` explains
+the decision.
+
+OrgConfig v1 optionally includes `summary`. Its `department_profiles` and
+`role_profiles` use canonical names from `departments` and `roles`. Each profile
+provides `focus_topics`, `responsibilities`, and a `glossary` that maps configured
+language codes to canonical terms and their aliases. `settings.max_length`
+counts Unicode code points across point texts. `settings.style` accepts
+`bullets` or `short_paragraph`. Set `not_relevant_reasons` by language to
+provide a localized explanation when a summary has no points. The example
+organization provides English and Hindi glossaries for both departments and
+for the finance officer role.
