@@ -7,10 +7,12 @@ evaluation reports belong in ignored `eval/results/`. Do not force-add either.
 ## A small public sample: FUNSD
 
 Use three English test images initially. FUNSD provides scanned forms with JSON
-annotations; the [official description](https://guillaumejaume.github.io/FUNSD/description/)
-documents `form[].text`, word boxes, and entity labels. Follow the license and
-citation instructions on the [official download page](https://guillaumejaume.github.io/FUNSD/download/).
-Public download availability is not a public-domain designation.
+annotations for `form[].text`, word boxes, and entity labels. EPFL-LTS5's custom
+terms limit FUNSD to non-commercial research and educational use. Check any
+separate rights for the RVL-CDIP images before use.
+[Dataset description](https://guillaumejaume.github.io/FUNSD/description/)
+[Licence terms](https://guillaumejaume.github.io/FUNSD/work/)
+[Official download](https://guillaumejaume.github.io/FUNSD/download/)
 
 From the repository root:
 
@@ -119,3 +121,55 @@ hashes, but cannot certify that a transcription is correct.
 Run the evaluator as described in [eval/ocr/README.md](../eval/ocr/README.md).
 No dataset download is part of the evaluation runtime, and this change commits
 neither sample data nor generated benchmark results.
+
+For document classification, see the [small RVL-CDIP sampling guide](../eval/classification/README.md).
+
+## CUAD and SROIE evaluation subsets
+
+- CUAD v1 comes from The Atticus Project under CC BY 4.0.
+  Keep the dataset attribution and review the publisher's notes about the underlying
+  contracts. Use the first three contracts in the publisher's `test.json` order.
+  [Publisher licence](https://www.atticusprojectai.org/legal/)
+  [Publisher dataset and documentation](https://github.com/TheAtticusProject/cuad)
+- The ICDAR 2019 SROIE release and the `jsdnrs` redistribution used here are CC BY 4.0.
+  Credit the challenge authors and the redistribution. Use `default/test` rows 0–2
+  (`X00016469670`, `X00016469671`, `X51005200931`). Receipts can contain personal
+  details. Keep the images and derived annotations under ignored `data/`.
+  [Licence information](https://github.com/jsdnrs/ICDAR2019-SROIE/blob/main/DATASET.md#licensing-information)
+  [Dataset card and test split](https://huggingface.co/datasets/jsdnrs/ICDAR2019-SROIE)
+
+From the repository root, download the original CUAD archive and three SROIE
+rows. The dataset viewer gives short-lived image URLs, so fetch the images
+immediately after fetching the annotations.
+
+```sh
+mkdir -p data/public/raw
+curl -fsSL https://raw.githubusercontent.com/TheAtticusProject/cuad/master/data.zip \
+  -o data/public/raw/cuad-data.zip
+curl -fsSL 'https://datasets-server.huggingface.co/rows?dataset=jsdnrs/ICDAR2019-SROIE&config=default&split=test&offset=0&length=3' \
+  -o data/public/raw/sroie-test.json
+python3 - <<'PY'
+import json
+from pathlib import Path
+from urllib.parse import urlsplit
+from urllib.request import urlopen
+
+raw = Path('data/public/raw')
+rows = json.loads((raw / 'sroie-test.json').read_text())['rows']
+for entry in rows:
+    row = entry['row']
+    key, url = row['key'], row['image']['src']
+    parsed = urlsplit(url)
+    if not key.isalnum() or (parsed.scheme, parsed.hostname) != (
+        'https', 'datasets-server.huggingface.co'
+    ):
+        raise ValueError(f'Unexpected SROIE asset for {key!r}')
+    with urlopen(url, timeout=30) as response:
+        (raw / f'{key}.jpg').write_bytes(response.read())
+PY
+```
+
+The CUAD archive used for this run had SHA-256
+`f8161d18bea4e9c05e78fa6dda61c19c846fb8087ea969c172753bc2f45b999a`.
+The prepared gold sets record the selected contract titles, receipt IDs, and
+SHA-256 of all inputs. See the [public evaluation commands](../eval/README.md#public-dataset-evaluation).

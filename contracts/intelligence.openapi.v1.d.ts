@@ -400,6 +400,15 @@ export interface components {
                 };
             };
             upload_defaults?: components["schemas"]["upload-metadata.v1.schema"];
+            classification?: {
+                /** @enum {string} */
+                backend: "disabled" | "tfidf" | "llm";
+                /** @description Path to a trained JSON artifact, relative to the Intelligence process working directory or absolute. */
+                model_path?: string;
+                /** @description Enable an LLM suggestion when the text classifier is unavailable or abstains. */
+                llm_fallback?: boolean;
+                min_confidence?: number;
+            };
             languages: string[];
             ocr_engine: string;
             /** @description Optional organization vocabulary for numbered clauses, headings and margin page numbers. */
@@ -526,6 +535,9 @@ export interface components {
             content_hash?: string;
             department?: string;
             doc_type?: string;
+            /** @description Optional classification suggestion, separate from doc_type. */
+            predicted_type?: string;
+            prediction_confidence?: number;
             /** Format: date */
             doc_date?: string;
             language?: string;
@@ -551,7 +563,7 @@ export interface components {
                     rows?: string[][];
                 }[];
             }[];
-        };
+        } & (unknown & unknown);
         /** ParseResult v1 */
         "parse-result.v1.schema": {
             document: components["schemas"]["document.v1.schema"];

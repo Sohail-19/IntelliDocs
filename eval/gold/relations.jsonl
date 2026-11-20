@@ -1,0 +1,6 @@
+{"source_doc_id":"amendment-new","target_doc_id":"amendment-old","relation_type":"amends","scope":"clauses","source_pages":[1],"target_pages":[1]}
+{"source_doc_id":"replacement-new","target_doc_id":"replacement-old","relation_type":"supersedes","scope":"whole_document","source_pages":[1],"target_pages":[1]}
+{"source_doc_id":"withdrawal-new","target_doc_id":"withdrawal-old","relation_type":"withdraws","scope":"whole_document","source_pages":[1],"target_pages":[1]}
+{"source_doc_id":"conflict-new","target_doc_id":"conflict-old","relation_type":"conflicts_with","scope":"clauses","source_pages":[1],"target_pages":[1]}
+{"source_doc_id":"reference-new","target_doc_id":"reference-old","relation_type":"references","scope":"clauses","source_pages":[1],"target_pages":[1]}
+{"source_doc_id":"unrelated-new","target_doc_id":"unrelated-old","relation_type":null,"scope":null,"source_pages":[],"target_pages":[]}

@@ -4,6 +4,9 @@
   "mime_type": "application/pdf",
   "source_uri": "storage://documents/vendor-agreement.pdf",
   "language": "en",
+  "doc_type": "agreement",
+  "predicted_type": "invoice",
+  "prediction_confidence": 0.72,
   "status": "ready",
   "pages": [
     {

@@ -58,9 +58,21 @@ class Metrics(TypedDict):
 
 
 def score_ranking(ranking: Sequence[Chunk], targets: Sequence[Target]) -> Metrics:
+    scores = ranking_metrics(ranking, targets, [5, 10], 10)
+    return Metrics(
+        recall_at_5=scores["recall_at_5"],
+        recall_at_10=scores["recall_at_10"],
+        mrr=scores["mrr"],
+        ndcg_at_10=scores["ndcg_at_10"],
+    )
+
+
+def ranking_metrics(
+    ranking: Sequence[Chunk], targets: Sequence[Target], recall_at: Sequence[int], ndcg_at: int
+) -> dict[str, float]:
     """Count unique gold targets and give at most one binary gain at each rank."""
     seen: set[Target] = set()
-    recalled_at_5 = recalled_at_10 = 0
+    recalled = dict.fromkeys(recall_at, 0)
     reciprocal_rank = dcg = 0.0
     for rank, chunk in enumerate(ranking, start=1):
         new_targets = {target for target in targets if target not in seen and target.matches(chunk)}
@@ -69,15 +81,14 @@ def score_ranking(ranking: Sequence[Chunk], targets: Sequence[Target]) -> Metric
         seen.update(new_targets)
         if not reciprocal_rank:
             reciprocal_rank = 1 / rank
-        if rank <= 5:
-            recalled_at_5 = len(seen)
-        if rank <= 10:
-            recalled_at_10 = len(seen)
+        for cutoff in recall_at:
+            if rank <= cutoff:
+                recalled[cutoff] = len(seen)
+        if rank <= ndcg_at:
             dcg += 1 / log2(rank + 1)
-    ideal = sum(1 / log2(rank + 1) for rank in range(1, min(len(targets), 10) + 1))
+    ideal = sum(1 / log2(rank + 1) for rank in range(1, min(len(targets), ndcg_at) + 1))
     return {
-        "recall_at_5": recalled_at_5 / len(targets),
-        "recall_at_10": recalled_at_10 / len(targets),
+        **{f"recall_at_{cutoff}": count / len(targets) for cutoff, count in recalled.items()},
         "mrr": reciprocal_rank,
-        "ndcg_at_10": dcg / ideal,
+        f"ndcg_at_{ndcg_at}": dcg / ideal,
     }

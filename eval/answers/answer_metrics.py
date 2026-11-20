@@ -5,12 +5,11 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from typing import Annotated, Self
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
-
 from app.answering import AnswerDraft
 from app.chunking import canonical_document
 from app.verification.matching import match_quote
 from intellidocs_intelligence.models import Citation, ParsedDocument
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 NonBlank = Annotated[str, Field(min_length=1, pattern=r"\S")]
 
@@ -134,7 +133,7 @@ def grounded(citation: Citation, draft: AnswerDraft) -> bool:
 
 def score(gold: GoldAnswer, claims: Sequence[ScoredClaim], draft: AnswerDraft) -> dict[str, int]:
     covered: set[int] = set()
-    correct = attempted = unsupported = 0
+    correct = attempted = faithful = unsupported = 0
     for claim in claims:
         points = {
             index
@@ -144,10 +143,12 @@ def score(gold: GoldAnswer, claims: Sequence[ScoredClaim], draft: AnswerDraft) -
         supported = False
         for citation in claim.citations:
             attempted += 1
+            traceable = citation is not None and grounded(citation, draft)
+            faithful += int(traceable)
             valid = (
                 bool(points)
                 and citation is not None
-                and grounded(citation, draft)
+                and traceable
                 and any(
                     target.doc_id == citation.doc_id
                     and (citation.page_start or citation.page)
@@ -168,6 +169,7 @@ def score(gold: GoldAnswer, claims: Sequence[ScoredClaim], draft: AnswerDraft) -
         "unsupported_claims": unsupported,
         "citations": attempted,
         "correct_citations": correct,
+        "faithful_citations": faithful,
         "answerable_questions": int(gold.answerable),
         "unanswerable_questions": int(not gold.answerable),
         "abstained_unanswerable": int(not gold.answerable and not claims),
@@ -185,6 +187,7 @@ def summarize(rows: Sequence[Mapping[str, int]]) -> dict[str, int | float | None
     return {
         **counts,
         "citation_precision": ratio("correct_citations", "citations"),
+        "citation_faithfulness": ratio("faithful_citations", "citations"),
         "unsupported_claim_rate": ratio("unsupported_claims", "claims"),
         "abstention_rate_unanswerable": ratio("abstained_unanswerable", "unanswerable_questions"),
         "answer_coverage": ratio("covered_points", "expected_points"),

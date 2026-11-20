@@ -1,0 +1,12 @@
+{"id":"en-01","org_id":"example","language":"en","query":"By what date must the Finance Department submit the reconciliation ledger?","answer":"2099-12-31","source":"finance-ledger.docx","page":1}
+{"id":"en-02","org_id":"example","language":"en","query":"Which portal receives the supporting invoices?","answer":"Finance Records portal","source":"finance-ledger.docx","page":1}
+{"id":"en-03","org_id":"example","language":"en","query":"How long is the audit copy retained?","answer":"Seven years","source":"finance-ledger.docx","page":1}
+{"id":"en-04","org_id":"example","language":"en","query":"What is the monthly service fee in the vendor agreement?","answer":"240 dollars","source":"vendor-agreement.docx","page":1}
+{"id":"en-05","org_id":"example","language":"en","query":"Where are billing disputes sent?","answer":"Contracts Desk","source":"vendor-agreement.docx","page":1}
+{"id":"en-06","org_id":"example","language":"en","query":"Where is the replacement equipment delivered?","answer":"North Annex","source":"vendor-agreement.docx","page":1}
+{"id":"es-01","org_id":"example2","language":"es","query":"¿En qué plazo se debe registrar el control de cloro desde la emisión?","answer":"5 días desde la emisión","source":"aviso-calidad.docx","page":1}
+{"id":"es-02","org_id":"example2","language":"es","query":"¿Dónde se entregan las muestras de agua?","answer":"Laboratorio municipal","source":"aviso-calidad.docx","page":1}
+{"id":"es-03","org_id":"example2","language":"es","query":"¿Durante cuánto tiempo se archiva el registro de turbidez?","answer":"Doce meses","source":"aviso-calidad.docx","page":1}
+{"id":"es-04","org_id":"example2","language":"es","query":"¿Dónde estará el punto de reparto para los vecinos?","answer":"Plaza del ayuntamiento","source":"aviso-interrupcion.docx","page":1}
+{"id":"es-05","org_id":"example2","language":"es","query":"¿A qué hora comienza la interrupción del suministro?","answer":"08:30","source":"aviso-interrupcion.docx","page":1}
+{"id":"es-06","org_id":"example2","language":"es","query":"¿En qué teléfono se comunican las incidencias?","answer":"555-0142","source":"aviso-interrupcion.docx","page":1}

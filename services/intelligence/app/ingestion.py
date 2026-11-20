@@ -10,6 +10,7 @@ from fastapi import HTTPException, UploadFile
 
 from intellidocs_intelligence.models import OrgConfig, ParseResult, UploadMetadata
 
+from .classification import classification_text, classifier_from_config
 from .parsing.base import dependency
 from .parsing.factory import parser_from_config
 from .parsing.formats import (
@@ -91,6 +92,12 @@ class IngestionService:
         if len(content) > limit:
             raise HTTPException(413, "File exceeds MAX_UPLOAD_BYTES")
         parser = parser_from_config(config)
+        classifier_error = False
+        try:
+            classifier = classifier_from_config(config)
+        except (OSError, ValueError):
+            classifier = None
+            classifier_error = True
         created: list[str] = []
         budget = [limit]
 
@@ -141,6 +148,17 @@ class IngestionService:
             result.document.doc_type = selected.doc_type
             result.document.doc_date = selected.doc_date
             result.org_id = org_id
+            if classifier_error:
+                result.warnings.append("Document type classifier is unavailable.")
+            if classifier is not None:
+                try:
+                    prediction = classifier.predict(classification_text(result.document))
+                except (OSError, ValueError, RuntimeError):
+                    result.warnings.append("Document type classifier is unavailable.")
+                else:
+                    if prediction is not None and prediction.document_type in config.document_types:
+                        result.document.predicted_type = prediction.document_type
+                        result.document.prediction_confidence = prediction.confidence
             self.storage.save_result(identifier, result)
             return result
 
