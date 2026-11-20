@@ -24,10 +24,14 @@ from app.retrieval.filters import payload_filter
 from app.vector_store import QdrantStore
 from intellidocs_intelligence.embeddings import Embedder, embedder_from_env
 from intellidocs_intelligence.models import Chunk
-from metrics import GoldQuery, Metrics, score_ranking
 from numpy import random as numpy_random
 from pydantic import BaseModel
 from qdrant_client import QdrantClient
+
+if __package__:
+    from .metrics import GoldQuery, Metrics, score_ranking
+else:
+    from metrics import GoldQuery, Metrics, score_ranking
 
 ROOT = Path(__file__).resolve().parents[2]
 SAMPLE = Path(__file__).with_name("sample.jsonl")

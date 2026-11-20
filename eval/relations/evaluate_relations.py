@@ -7,7 +7,7 @@ from collections import defaultdict
 from collections.abc import Sequence
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Annotated, TypeVar, get_args
+from typing import Annotated, TypedDict, TypeVar, get_args
 
 from app.chunking.canonical import canonical_document
 from app.relations.service import relations_from_env
@@ -29,6 +29,37 @@ Model = TypeVar("Model", bound=BaseModel)
 Page = Annotated[int, Field(ge=1)]
 Pair = tuple[str, str]
 RelationKey = tuple[str, str, DocumentRelationType, RelationScope]
+
+
+class Classification(TypedDict):
+    tp: int
+    fp: int
+    fn: int
+    precision: float | None
+    recall: float | None
+    f1: float | None
+
+
+class SupersessionStats(TypedDict):
+    rate: float | None
+    false_documents: list[str]
+    eligible_documents: int
+
+
+class RelationScores(TypedDict):
+    overall: Classification
+    by_relation_type: dict[DocumentRelationType, Classification]
+    false_supersession: SupersessionStats
+    confirmed_false_supersession: SupersessionStats
+    citation_faithfulness: float | None
+    faithful_citations: int
+    citations: int
+    failed_citations: list[dict[str, int | str]]
+    gold_evidence_page_coverage: float | None
+    relations_covering_gold_evidence_pages: int
+    predictions_missing_evidence: int
+    missed_relations: list[RelationKey]
+    unexpected_relations: list[RelationKey]
 
 
 class GoldPair(BaseModel):
@@ -92,7 +123,7 @@ def rate(numerator: int, denominator: int) -> float | None:
 
 def classification(
     expected: set[RelationKey], predicted: set[RelationKey]
-) -> dict[str, object]:
+) -> Classification:
     tp = len(expected & predicted)
     fp = len(predicted - expected)
     fn = len(expected - predicted)
@@ -120,7 +151,7 @@ def evaluate(
     sources: Sequence[ParseResult],
     *,
     confirmed_only: bool = False,
-) -> dict[str, object]:
+) -> RelationScores:
     parsed = {row.document.id: row.document for row in sources}
     if len(parsed) != len(sources):
         raise ValueError("Source document IDs must be unique")
@@ -172,7 +203,7 @@ def evaluate(
                 predicted[key].append(relation)
 
     faithful_count = citation_count = complete_evidence = 0
-    failed_citations = []
+    failed_citations: list[dict[str, int | str]] = []
     for key, members in predicted.items():
         covered: tuple[set[int], set[int]] = set(), set()
         for relation in members:
@@ -203,18 +234,18 @@ def evaluate(
                                 "char_end": citation.char_end,
                             }
                         )
-        label = expected.get(key)
+        expected_label = expected.get(key)
         if (
-            label
-            and set(label.source_pages) <= covered[0]
-            and set(label.target_pages) <= covered[1]
+            expected_label
+            and set(expected_label.source_pages) <= covered[0]
+            and set(expected_label.target_pages) <= covered[1]
         ):
             complete_evidence += 1
 
     expected_keys, predicted_keys = set(expected), set(predicted)
     eligible_targets = {target for _, target in pairs} - fully_stale(expected_keys)
 
-    def stale_stats(keys: set[RelationKey]) -> dict[str, object]:
+    def stale_stats(keys: set[RelationKey]) -> SupersessionStats:
         wrong = fully_stale(keys) & eligible_targets
         return {
             "rate": rate(len(wrong), len(eligible_targets)),
@@ -318,21 +349,17 @@ def main() -> None:
         return f"{value:.1%}" if isinstance(value, float) else "n/a"
 
     print(f"{'Relation type':<18} {'Precision':>9} {'Recall':>9} {'F1':>9}")
-    by_kind = scores["by_relation_type"]
-    assert isinstance(by_kind, dict)
-    for kind, row in by_kind.items():
+    for kind, row in scores["by_relation_type"].items():
         print(
             f"{kind:<18} "
             + " ".join(
-                f"{display(row[name]):>9}" for name in ("precision", "recall", "f1")
+                f"{display(value):>9}" for value in (row["precision"], row["recall"], row["f1"])
             )
         )
-    for key, label in (
-        ("false_supersession", "False supersession rate"),
-        ("confirmed_false_supersession", "Confirmed false supersession rate"),
+    for label, metric in (
+        ("False supersession rate", scores["false_supersession"]),
+        ("Confirmed false supersession rate", scores["confirmed_false_supersession"]),
     ):
-        metric = scores[key]
-        assert isinstance(metric, dict)
         print(f"{label}: {display(metric['rate'])}")
     print(f"Citation faithfulness: {display(scores['citation_faithfulness'])}")
     print(

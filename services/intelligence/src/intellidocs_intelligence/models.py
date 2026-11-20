@@ -87,6 +87,14 @@ class Document(UploadMetadata):
     language: LanguageCode | None = None
     status: Literal["pending", "processing", "ready", "failed"]
     pages: list[Page] = Field(default_factory=list)
+    predicted_type: NonEmptyString | None = None
+    prediction_confidence: ConfidenceContribution | None = None
+
+    @model_validator(mode="after")
+    def prediction_pair(self) -> Self:
+        if (self.predicted_type is None) != (self.prediction_confidence is None):
+            raise ValueError("predicted_type and prediction_confidence must appear together")
+        return self
 
 
 class ParsedDocument(Document):
@@ -458,9 +466,23 @@ class DocumentStructure(ContractModel):
     page_number_patterns: list[NonBlankString] = Field(default_factory=list)
 
 
+class ClassificationConfig(ContractModel):
+    backend: Literal["disabled", "tfidf", "llm"]
+    model_path: NonBlankString | None = None
+    llm_fallback: StrictBool = False
+    min_confidence: ConfidenceContribution = 0.55
+
+    @model_validator(mode="after")
+    def require_model_path(self) -> Self:
+        if self.backend == "tfidf" and self.model_path is None:
+            raise ValueError("classification.model_path is required with the tfidf backend")
+        return self
+
+
 class OrgConfig(ContractModel):
     access: OrgAccess | None = None
     upload_defaults: UploadMetadata | None = None
+    classification: ClassificationConfig | None = None
     languages: list[LanguageCode] = Field(min_length=1)
     ocr_engine: NonEmptyString
     document_structure: DocumentStructure = Field(default_factory=DocumentStructure)

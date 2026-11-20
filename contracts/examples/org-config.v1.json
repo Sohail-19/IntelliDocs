@@ -4,6 +4,12 @@
     "hi"
   ],
   "ocr_engine": "tesseract",
+  "classification": {
+    "backend": "tfidf",
+    "model_path": "models/classification/example.json",
+    "min_confidence": 0.55,
+    "llm_fallback": false
+  },
   "document_structure": {
     "clause_labels": ["Clause", "खंड"],
     "heading_labels": ["Article", "Section", "अनुच्छेद", "धारा"],

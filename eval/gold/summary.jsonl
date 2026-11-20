@@ -1,0 +1,2 @@
+{"id":"finance-reports","request":{"doc_id":"reports-en","department":"finance","language":"en"},"expected_points":["Finance must file the report by 5 December 2026."],"not_relevant":false}
+{"id":"logistics-reports","request":{"doc_id":"reports-en","department":"logistics","language":"en"},"expected_points":[],"not_relevant":true}

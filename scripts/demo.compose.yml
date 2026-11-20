@@ -1,0 +1,19 @@
+services:
+  core:
+    ports: !override
+      - "127.0.0.1:${CORE_PORT}:${CORE_PORT}"
+
+  migrate:
+    profiles: [migration]
+    build:
+      context: .
+      dockerfile: services/core/Dockerfile
+      target: dependencies
+    command: ["npm", "run", "migrate:up"]
+    volumes:
+      - ./services/core/migrations:/app/migrations:ro
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
+    depends_on:
+      postgres:
+        condition: service_healthy

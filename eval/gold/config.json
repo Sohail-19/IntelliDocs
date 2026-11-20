@@ -1,0 +1,22 @@
+{
+  "seed": 42,
+  "embedding": {"backend": "fake", "model": "fake-sha256-v1", "sparse": "native"},
+  "reranker": {"backend": "fake", "model": "lexical-term-overlap"},
+  "llm": {"provider": "fake", "model": "fixture-claims.v1"},
+  "retrieval": {"recall_at": [5, 10], "ndcg_at": 10, "answer_top_k": 10, "candidate_pool_size": 50, "rrf_k": 2},
+  "thresholds": {"answer_quote_similarity": 1.0, "extraction_action_similarity": 0.85},
+  "ablations": ["no_reranker", "dense_only", "sparse_only", "verifier_off", "plain_rag"],
+  "inputs": {
+    "ocr": {
+      "documents": "services/intelligence/tests/fixtures",
+      "ground_truth": "eval/gold/ocr",
+      "manifest": "eval/gold/ocr/manifest.json",
+      "org_config": "eval/gold/ocr/org.json"
+    },
+    "retrieval": {"gold": "eval/gold/retrieval.jsonl", "chunks": "eval/retrieval/sample_chunks.jsonl"},
+    "answer": {"gold": "eval/gold/answer.jsonl", "chunks": "eval/answers/sample_chunks.jsonl", "responses": "eval/answers/sample_responses.json"},
+    "extraction": {"gold": "eval/gold/extraction.jsonl", "predictions": "eval/extraction/sample_predictions.jsonl", "sources": "eval/extraction/sample_sources.jsonl"},
+    "relations": {"gold": "eval/gold/relations.jsonl", "predictions": "eval/relations/sample_predictions.jsonl", "sources": "eval/relations/sample_sources.jsonl"},
+    "summary": {"gold": "eval/gold/summary.jsonl", "predictions": "eval/gold/summary_predictions.json", "sources": "eval/extraction/sample_sources.jsonl"}
+  }
+}

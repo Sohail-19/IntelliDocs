@@ -1,0 +1,6 @@
+{
+  "documents": [
+    {"file": "scanned.pdf", "references": [{"language": "en", "text": "scanned.txt", "pages": [1]}]},
+    {"file": "upload.png", "references": [{"language": "en", "text": "upload.txt", "pages": [1]}]}
+  ]
+}

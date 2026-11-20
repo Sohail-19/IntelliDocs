@@ -37,6 +37,9 @@ Department, document type, and document date come only from explicit upload
 fields or optional `OrgConfig.upload_defaults`; upload fields take precedence.
 Missing metadata stays absent. `doc_date` must be a calendar date in YYYY-MM-DD
 format. Document also carries the original file's SHA-256 `content_hash`.
+If the organization enables classification, ingest can attach `predicted_type`
+and `prediction_confidence` together. The stored ParseResult preserves the
+operator's `doc_type` separately. Retrieval and routing continue to use `doc_type`.
 
 `POST /v1/index` takes IndexRequest (`doc_id`) and returns IndexResult (`doc_id`,
 `chunk_count`, `embedding_model`, `warnings`). It loads a stored ParseResult,

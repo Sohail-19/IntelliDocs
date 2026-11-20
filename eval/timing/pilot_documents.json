@@ -1,0 +1,50 @@
+{
+  "example": [
+    {
+      "filename": "finance-ledger.docx",
+      "department": "finance",
+      "doc_type": "invoice",
+      "doc_date": "2099-06-10",
+      "paragraphs": [
+        "Finance Department must submit the reconciliation ledger by 2099-12-31.",
+        "Upload the supporting invoices to the Finance Records portal.",
+        "The audit copy is retained for seven years."
+      ]
+    },
+    {
+      "filename": "vendor-agreement.docx",
+      "department": "legal",
+      "doc_type": "agreement",
+      "doc_date": "2099-06-10",
+      "paragraphs": [
+        "The vendor agreement lists a monthly service fee of 240 dollars.",
+        "Billing disputes are sent to the Contracts Desk.",
+        "The replacement equipment is delivered to the North Annex."
+      ]
+    }
+  ],
+  "example2": [
+    {
+      "filename": "aviso-calidad.docx",
+      "department": "water_quality",
+      "doc_type": "water_quality_notice",
+      "doc_date": "2099-06-10",
+      "paragraphs": [
+        "La Unidad de Vigilancia deberá registrar el control de cloro en un plazo de 5 días desde la emisión.",
+        "Las muestras de agua se entregan al laboratorio municipal.",
+        "El registro de turbidez se archiva durante doce meses."
+      ]
+    },
+    {
+      "filename": "aviso-interrupcion.docx",
+      "department": "customer_service",
+      "doc_type": "service_interruption",
+      "doc_date": "2099-06-10",
+      "paragraphs": [
+        "El punto de reparto para los vecinos estará en la plaza del ayuntamiento.",
+        "La interrupción del suministro comienza a las 08:30.",
+        "Las incidencias de la interrupción se comunican en el teléfono 555-0142."
+      ]
+    }
+  ]
+}

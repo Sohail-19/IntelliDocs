@@ -1,0 +1,5 @@
+{"id":"en-audit","query":"monthly audit report due date","language":"en","query_type":"same_language","targets":[{"doc_id":"audit-policy","page":2,"clause_number":"1.2"},{"doc_id":"audit-calendar","page":1}],"filters":{"department":"finance"}}
+{"id":"hi-travel","query":"यात्रा प्रतिपूर्ति के लिए कौन सी रसीद चाहिए","language":"hi","query_type":"same_language","targets":[{"doc_id":"travel-hi","page":1}],"filters":{"department":"travel"}}
+{"id":"en-shipping","query":"WH17 warehouse shipping deadline","language":"en","query_type":"cross_lingual","targets":[{"doc_id":"shipping-hi","page":3,"clause_number":"4.1"}],"filters":{"department":"logistics"}}
+{"id":"hi-retention","query":"अभिलेख कितने साल रखें","language":"hi","query_type":"cross_lingual","targets":[{"doc_id":"records-en","clause_number":"6.1"}],"filters":{"department":"records","doc_type":"policy"}}
+{"id":"en-incident","query":"security incident reporting deadline","language":"en","query_type":"same_language","targets":[{"doc_id":"security-policy","clause_number":"2.1"}],"filters":{"department":"security"}}

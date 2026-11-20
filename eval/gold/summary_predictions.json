@@ -1,0 +1,25 @@
+{
+  "finance-reports": {
+    "doc_id": "reports-en",
+    "audience": {"department": "finance"},
+    "language": "en",
+    "points": [{
+      "text": "Finance must file the report by 5 December 2026.",
+      "citations": [{"doc_id": "reports-en", "page": 1, "char_start": 0, "char_end": 48, "quote": "Finance must file the report by 5 December 2026."}]
+    }],
+    "not_relevant": false,
+    "relevance_reason": "The document assigns the report to Finance.",
+    "generated_by": "fixture-summary.v1",
+    "verifier_version": "fixture"
+  },
+  "logistics-reports": {
+    "doc_id": "reports-en",
+    "audience": {"department": "logistics"},
+    "language": "en",
+    "points": [],
+    "not_relevant": true,
+    "relevance_reason": "The document has no Logistics responsibility.",
+    "generated_by": "fixture-summary.v1",
+    "verifier_version": "fixture"
+  }
+}

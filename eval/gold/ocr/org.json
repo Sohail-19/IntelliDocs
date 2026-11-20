@@ -1,0 +1,7 @@
+{
+  "languages": ["en"],
+  "ocr_engine": "tesseract",
+  "document_types": [],
+  "departments": [],
+  "routing_rules": []
+}

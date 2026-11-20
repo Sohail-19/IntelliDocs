@@ -10,6 +10,58 @@ reports live in ignored `eval/results/`; sample data stays under ignored `data/`
 embedding/load times, process peak RSS, chunk counts, and Qdrant collection size.
 See [performance results and reproduction](../docs/performance.md).
 
+The [search-effort timing pilot](timing/README.md) pairs human stopwatch
+measurements with answer API timings across both example organizations.
+
+## Combined gold-set evaluation
+
+From the repository root, run the bundled suite with the intelligence development
+environment and Tesseract with the `eng` language pack.
+
+```sh
+services/intelligence/.venv/bin/python eval/run_all.py
+```
+
+The runner evaluates OCR, retrieval, answers, extraction, relations, and summaries
+in that order. The [suite configuration](gold/config.json) selects the gold sets,
+models, retrieval cutoffs, thresholds, seed, and ablations. Paths in the config
+are relative to the repository root or absolute. Use `--config PATH` to run a
+different suite, `--overwrite` to replace today's UTC report, or `--output-dir`
+to keep several runs. Reports are gitignored and include the full commit hash,
+the dirty-tree flag, exact config, effective defaults, and local input hashes.
+
+The bundled run uses synthetic data. It runs Tesseract and local Qdrant, replays
+fixture drafts through the answer pipeline, and scores saved extraction, relation,
+and summary predictions. To evaluate an LLM, remove `inputs.answer.responses`
+and select the provider/model in the config. Supply credentials through the
+environment. For any of extraction, relations, or summary, omit its `predictions`
+and `sources` and set `live_index` with `url`, `collection`, and `storage_root`
+pointing to pre-indexed documents. Keep the external collection, model revisions,
+org configuration, and cache conditions fixed across runs. Hosted provider
+responses may vary even with a fixed local seed.
+
+The comparison holds filters and candidate limits constant. `no_reranker`
+removes reranking. `dense_only` and `sparse_only` each select one retrieval
+channel. `verifier_off` scores the full pipeline's same drafts before verification.
+`plain_rag` runs dense retrieval and generation with reranking and verification
+disabled. It uses the same structured draft prompt so claims and attempted
+citations can be scored under the same rules.
+
+The default output is `eval/results/<UTC-date>/report.md` and `report.json`,
+with `metrics.csv`, `ablations.csv`, and `latency.csv`. The tables flag metrics
+with fewer than 30 items as **low sample** using the sample unit shown in each
+row. JSON retains the audit value separately as `observed_value`. Latency reports
+p50/p95 for measured operations. It excludes index construction and labels
+snapshot timings as scoring time. Relation snapshot scoring uses one observation
+per gold-set batch because false supersession is computed across target documents.
+
+Summary gold is JSONL with `id`, `request` (v1 `SummaryRequest`),
+`expected_points` (text or text plus human-authored aliases), and `not_relevant`.
+Snapshot predictions are v1 `Summary` objects keyed by gold ID. Coverage counts
+expected points that match output text and have a faithful citation. The runner
+also scores citation faithfulness and abstention on irrelevant requests.
+[Bundled summary sample](gold/summary.jsonl)
+
 ## Retrieval evaluation
 
 The gold set is UTF-8 JSONL with one query per line. The bundled sample has five
@@ -279,3 +331,44 @@ sources fixed across comparisons. Reports save raw counts and available input
 hashes to ignored `eval/results/relations_<UTC-date>.json`. Undefined rates
 are `null` in JSON and `n/a` in the table. Use `--output PATH` or `--overwrite`
 to control the report destination.
+
+## Document type classification
+
+[Train and evaluate a text classifier](classification/README.md) on labelled
+ParseResult JSON, or sample a small RVL-CDIP OCR subset. The report breaks out
+held-out accuracy and F1 by configured label and language.
+
+## Public dataset evaluation
+
+Download the three held-out contracts and three receipts using the [public data
+guide](../data/README.md#cuad-and-sroie-evaluation-subsets). From the repository
+root, use the intelligence Python environment, Tesseract with the `eng`
+language pack, and a local snapshot of `intfloat/multilingual-e5-small`.
+The [performance guide](../docs/performance.md) describes provisioning that model.
+
+```sh
+services/intelligence/.venv/bin/python -m eval.public.prepare
+services/intelligence/.venv/bin/python -m eval.public.run \
+  --e5-model data/index-bench/models/614241f622f53c4eeff9890bdc4f31cfecc418b3 --seed 42
+```
+
+Omit `--e5-model` to run a deterministic smoke test with the fake dense encoder.
+The recorded model run pairs E5-small with BM25, in-memory Qdrant, and a
+lexical term-overlap reranker. The extraction baseline predicts sentences
+containing configured cues and uses the production citation verifier without
+an LLM. It leaves owner and deadline unresolved. The existing evaluators write
+`public_<dataset>_<metric>_<UTC-date>.json` in ignored `eval/results/`. Each
+report records the settings, model names, seed, exact sample membership, and
+source file hashes. Use `--overwrite` to rerun on the same date.
+
+| Dataset | What this run measures | Limits |
+| --- | --- | --- |
+| CUAD | Passage retrieval for four review categories and an extraction proxy using verbatim Insurance, Minimum Commitment, and Notice Period To Terminate Renewal spans. Passage boundaries are based on source text. Gold pages are logical passage numbers derived from CUAD offsets. | English contracts only. The labels cover selected topics and do not exhaustively annotate duties, operational owners, or due dates. Treat false positives and F1 as span-proxy scores. The gold's null owner/deadline fields cannot establish accuracy. Citation faithfulness checks copied text against the source. The subset has no independent page transcript for OCR. |
+| SROIE | OCR character and word error on receipt scans, and field evidence retrieval for company, date, address, and total. The adapter keeps every field in `receipt_fields.jsonl` and scores retrieval for fields it can align to text lines. | OCR uses published line transcriptions in annotation order, so the error rate includes reading order differences. Retrieval uses the annotated text to isolate retrieval from OCR. SROIE has no obligation annotations. The extraction report records emissions on receipts with an empty gold set as a smoke test, with undefined accuracy rates. |
+| FUNSD | Scanned-form text and layout annotations can support OCR checks with reviewed page transcripts, and key/value linking experiments. | Form labels do not measure contractual obligations, normalized deadlines, or legal citation faithfulness. FUNSD was not included in the CUAD/SROIE run. |
+
+For both retrieval subsets, relevance is scoped to the question's source
+document. The hybrid-with-filters configuration gets that document filter.
+Other configurations search the full subset and can retrieve valid-looking
+evidence for the same question from a different document. These small,
+same-language subsets cannot estimate cross-lingual performance.

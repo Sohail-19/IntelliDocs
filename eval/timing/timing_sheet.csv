@@ -1,0 +1,13 @@
+question_id,org_id,language,query,manual_seconds,manual_outcome,system_outcome
+en-01,example,en,By what date must the Finance Department submit the reconciliation ledger?,,,
+en-02,example,en,Which portal receives the supporting invoices?,,,
+en-03,example,en,How long is the audit copy retained?,,,
+en-04,example,en,What is the monthly service fee in the vendor agreement?,,,
+en-05,example,en,Where are billing disputes sent?,,,
+en-06,example,en,Where is the replacement equipment delivered?,,,
+es-01,example2,es,¿En qué plazo se debe registrar el control de cloro desde la emisión?,,,
+es-02,example2,es,¿Dónde se entregan las muestras de agua?,,,
+es-03,example2,es,¿Durante cuánto tiempo se archiva el registro de turbidez?,,,
+es-04,example2,es,¿Dónde estará el punto de reparto para los vecinos?,,,
+es-05,example2,es,¿A qué hora comienza la interrupción del suministro?,,,
+es-06,example2,es,¿En qué teléfono se comunican las incidencias?,,,

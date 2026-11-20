@@ -1,0 +1,4 @@
+{"id":"report","query":"When are reports due?","language":"en","expected_answer_points":["Reports must be submitted by Friday."],"relevant":[{"doc_id":"reports","page":2}],"answerable":true}
+{"id":"notice","query":"सूचना कब भेजनी होगी?","language":"hi","expected_answer_points":["सूचना सात दिनों में भेजनी होगी।"],"relevant":[{"doc_id":"notices","page":1}],"answerable":true}
+{"id":"travel","query":"Are travel expenses reimbursed?","language":"en","expected_answer_points":[],"relevant":[],"answerable":false}
+{"id":"fee","query":"What is the filing fee?","language":"en","expected_answer_points":[{"text":"The filing fee is waived.","aliases":["No filing fee is charged."]}],"relevant":[{"doc_id":"fees","page":3}],"answerable":true}
