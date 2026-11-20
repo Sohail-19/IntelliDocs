@@ -1,4 +1,5 @@
 import { Router } from 'express';
+import type { RequestHandler } from 'express';
 import multer from 'multer';
 
 import { auditContext } from './audit.js';
@@ -6,7 +7,7 @@ import type { AuditContext } from './audit.js';
 import { principal } from './auth/routes.js';
 import type { Guard } from './auth/routes.js';
 import type { DocumentRepository } from './documents.js';
-import { IntelligenceError } from './intelligence/client.js';
+import { IntelligenceError, llmProblem } from './intelligence/client.js';
 import type {
   IntelligenceClient,
   ExtractionResult,
@@ -20,6 +21,7 @@ export interface UploadDependencies {
   intelligence: Pick<IntelligenceClient, 'ingest' | 'index'>;
   documents: DocumentRepository;
   maxBytes?: number;
+  uploadAdmission?: RequestHandler;
 }
 
 export function uploadLimit(maxBytes = Number(process.env.MAX_UPLOAD_BYTES ?? 20971520)) {
@@ -34,6 +36,7 @@ export function uploadRouter(
   extract?: (docId: string, audit: AuditContext) => Promise<ExtractionResult>,
   ownsDocument?: (docId: string, orgId: number) => Promise<boolean>,
   detect?: DetectRelations,
+  requireSize = false,
 ): Router {
   const router = Router();
   const maxBytes = uploadLimit(dependencies.maxBytes);
@@ -78,24 +81,40 @@ export function uploadRouter(
         let extraction: ExtractionResult | undefined;
         try {
           extraction = await extract?.(docId, audit);
-        } catch {
+        } catch (error) {
+          const problem = llmProblem(error);
+          if (problem) {
+            res.json({ index_result: indexed, extraction_error: problem.message });
+            return;
+          }
           res.status(502).json({ index_result: indexed, error: 'Obligation extraction failed' });
           return;
         }
         try {
           if (extraction) await detect?.(docId, audit);
           res.json({ index_result: indexed, extraction_result: extraction });
-        } catch {
-          res.status(502).json({
+        } catch (error) {
+          const problem = llmProblem(error);
+          res.status(problem ? 200 : 502).json({
             index_result: indexed,
             extraction_result: extraction,
-            error: 'Relation detection failed',
+            ...(problem
+              ? { relation_error: problem.message }
+              : { error: 'Relation detection failed' }),
           });
         }
       })().catch(next);
     });
   }
-  router.post('/v1/upload', guard('documents:upload'), (req, res, next) => {
+  const sizeGuard: RequestHandler = (request, response, next) => {
+    const length = request.get('Content-Length');
+    if (requireSize && !length)
+      response.status(411).json({ error: 'Content-Length is required for uploads' });
+    else if (length && Number(length) > maxBytes + 65536)
+      response.status(413).json({ error: 'Upload exceeds the request size limit' });
+    else next();
+  };
+  const acceptUpload: RequestHandler = (req, res, next) => {
     upload.single('file')(req, res, (error: unknown) => {
       if (error) {
         const tooLarge = error instanceof multer.MulterError && error.code === 'LIMIT_FILE_SIZE';
@@ -167,6 +186,8 @@ export function uploadRouter(
         const extractionFailures: string[] = [];
         const indexFailures: string[] = [];
         const relationFailures: string[] = [];
+        let extractionDeferred: string | undefined;
+        let relationsDeferred: string | undefined;
         for (const parsed of documents) {
           const indexed = await indexDocument(parsed.document.id, audit);
           if (!indexed) {
@@ -177,14 +198,18 @@ export function uploadRouter(
           if (extract) {
             try {
               extractionResults.push(await extract(parsed.document.id, audit));
-            } catch {
-              extractionFailures.push(parsed.document.id);
+            } catch (error) {
+              const problem = llmProblem(error);
+              if (problem) extractionDeferred = problem.message;
+              else extractionFailures.push(parsed.document.id);
               continue;
             }
             try {
               await detect?.(parsed.document.id, audit);
-            } catch {
-              relationFailures.push(parsed.document.id);
+            } catch (error) {
+              const problem = llmProblem(error);
+              if (problem) relationsDeferred = problem.message;
+              else relationFailures.push(parsed.document.id);
             }
           }
         }
@@ -198,6 +223,8 @@ export function uploadRouter(
             ...result,
             index_results: indexResults,
             ...(extract ? { extraction_results: extractionResults } : {}),
+            ...(extractionDeferred && { extraction_error: extractionDeferred }),
+            ...(relationsDeferred && { relation_error: relationsDeferred }),
             ...(extractionFailures.length
               ? {
                   extraction_error: 'Some indexed documents failed obligation extraction.',
@@ -222,15 +249,24 @@ export function uploadRouter(
           const message =
             failure.status === 415
               ? 'The file type or contents are not supported'
-              : failure.status === 413
-                ? 'The file or its decoded attachments exceed the upload size limit'
-                : 'The document could not be parsed';
+              : failure.code === 'upload_pages'
+                ? 'The file and attachments exceed the upload page limit'
+                : failure.status === 413
+                  ? 'The file or its decoded attachments exceed the upload size limit'
+                  : 'The document could not be parsed';
           res
             .status(failure.status >= 400 && failure.status < 500 ? failure.status : 502)
             .json({ error: message });
         } else next(failure);
       });
     });
-  });
+  };
+  router.post(
+    '/v1/upload',
+    guard('documents:upload'),
+    sizeGuard,
+    ...(dependencies.uploadAdmission ? [dependencies.uploadAdmission] : []),
+    acceptUpload,
+  );
   return router;
 }

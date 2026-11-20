@@ -14,6 +14,7 @@ from pydantic import BaseModel, ConfigDict
 from intellidocs_intelligence.cache import CachedLLMProvider, DiskCache
 from intellidocs_intelligence.llm import LLMProvider, provider_from_env
 from intellidocs_intelligence.models import Chunk, NonEmptyString, ObligationType, OrgConfig
+from intellidocs_intelligence.runtime import cache_directory
 
 from .detector import CandidateDetector
 
@@ -164,6 +165,13 @@ class ObligationExtractor:
             len(chunks) - candidates,
             len(selected),
             len(seen) - len(selected),
+            extra={
+                "intellidocs_event": "obligation_candidates",
+                "scanned": len(chunks),
+                "skipped_non_candidates": len(chunks) - candidates,
+                "selected": len(selected),
+                "skipped_limit": len(seen) - len(selected),
+            },
         )
         fields = list(selected.items())
         drafts = []
@@ -173,8 +181,7 @@ class ObligationExtractor:
 
 
 def extractor_from_env(org: OrgConfig) -> ObligationExtractor:
-    storage = Path(os.environ.get("STORAGE_DIR", "data/uploads"))
-    cache = DiskCache(Path(os.environ.get("LLM_CACHE_DIR") or storage / "llm-cache"))
+    cache = DiskCache(cache_directory())
     return ObligationExtractor(
         CandidateDetector(org), provider_from_env(), ExtractionConfig.from_env(), cache
     )

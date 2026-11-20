@@ -1,0 +1,46 @@
+services:
+  - type: web
+    name: intellidocs-core
+    runtime: docker
+    plan: free
+    dockerContext: .
+    dockerfilePath: ./services/core/Dockerfile
+    autoDeployTrigger: "off"
+    healthCheckPath: /health
+    envVars:
+      - key: INTELLIDOCS_ENV
+        value: production
+      - key: DEMO_MODE
+        value: "true"
+      - key: LLM_ENABLED
+        value: "false"
+      - key: DATABASE_URL
+        sync: false
+      - key: INTELLIGENCE_URL
+        sync: false
+      - key: INTELLIDOCS_INTERNAL_KEY
+        sync: false
+      - key: CORE_CORS_ORIGINS
+        sync: false
+      - key: AUTH_JWT_SECRET
+        generateValue: true
+      - key: AUTH_BOOTSTRAP_TOKEN
+        generateValue: true
+      - key: DATABASE_POOL_MAX
+        value: "3"
+      - key: DATABASE_CONNECT_TIMEOUT_MS
+        value: "10000"
+      - key: MAX_UPLOAD_BYTES
+        value: "1048576"
+      - key: DEMO_UPLOADS_PER_USER_DAY
+        value: "3"
+      - key: DEMO_UPLOADS_GLOBAL_DAY
+        value: "12"
+      - key: DEMO_MAX_CONCURRENT_UPLOADS
+        value: "1"
+      - key: DEMO_RETENTION_DAYS
+        value: "7"
+      - key: DEMO_SWEEP_INTERVAL_SECONDS
+        value: "3600"
+      - key: TASK_SWEEP_INTERVAL_SECONDS
+        value: "3600"

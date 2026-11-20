@@ -13,6 +13,7 @@ import type { Guard } from './auth/routes.js';
 import type { OrgConfig } from './config/loader.js';
 import type { DocumentReader } from './documents.js';
 import type { IntelligenceClient, Summary, SummaryRequest } from './intelligence/client.js';
+import { llmProblem } from './intelligence/client.js';
 import type { ExtractedObligation, ObligationRepository } from './obligations.js';
 import type { PostgresRelationRepository } from './relations/repository.js';
 import {
@@ -219,8 +220,11 @@ export function documentSummaryRouter(deps: Dependencies, guard: Guard): Router 
         let summary: unknown;
         try {
           summary = await deps.summarize(input);
-        } catch {
-          response.status(502).json({ error: 'Intelligence summary failed' });
+        } catch (error) {
+          const problem = llmProblem(error);
+          response
+            .status(problem?.status ?? 502)
+            .json({ error: problem?.message ?? 'Intelligence summary failed' });
           return;
         }
         if (

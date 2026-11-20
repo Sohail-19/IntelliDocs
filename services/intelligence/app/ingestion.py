@@ -3,12 +3,14 @@
 import hashlib
 import os
 import re
+from io import BytesIO
 from pathlib import Path
 from uuid import uuid4
 
 from fastapi import HTTPException, UploadFile
 
 from intellidocs_intelligence.models import OrgConfig, ParseResult, UploadMetadata
+from intellidocs_intelligence.runtime import FeatureUnavailable, Runtime
 
 from .classification import classification_text, classifier_from_config
 from .parsing.base import dependency
@@ -21,6 +23,12 @@ from .parsing.formats import (
     validate_file,
 )
 from .storage import LocalStorage, Storage
+
+
+def page_limit_error() -> HTTPException:
+    return HTTPException(
+        413, {"code": "upload_pages", "message": "Upload and attachments exceed MAX_UPLOAD_PAGES"}
+    )
 
 
 def upload_limit() -> int:
@@ -100,10 +108,12 @@ class IngestionService:
             classifier_error = True
         created: list[str] = []
         budget = [limit]
+        pages_left = Runtime.from_env().max_pages
 
         def store(
             filename: str, data: bytes, parent: str | None = None, depth: int = 0
         ) -> ParseResult:
+            nonlocal pages_left
             filename = Path(filename.replace("\\", "/")).name
             if not filename or "\x00" in filename:
                 raise HTTPException(400, "Invalid filename")
@@ -116,6 +126,11 @@ class IngestionService:
                 mime_type = validate_file(filename, data, limit)
             except ValueError as error:
                 raise HTTPException(415, str(error)) from error
+            if pages_left <= 0 or (
+                mime_type == "application/pdf"
+                and len(dependency("pypdf", "parsing").PdfReader(BytesIO(data)).pages) > pages_left
+            ):
+                raise page_limit_error()
             identifier = str(uuid4())
             path = self.storage.save(identifier, filename, data)
             created.append(identifier)
@@ -124,6 +139,9 @@ class IngestionService:
                 result = logical_result(
                     path, text.splitlines(), config.languages, structure=config.document_structure
                 )
+                pages_left -= len(result.document.pages)
+                if pages_left < 0:
+                    raise page_limit_error()
                 result.attachments = []
                 for attachment in attachments:
                     if Path(attachment.filename).suffix.lower() not in MIME_TYPES:
@@ -138,6 +156,9 @@ class IngestionService:
                 result = parse_non_email(
                     path, config.languages, parser, limit, structure=config.document_structure
                 )
+                pages_left -= len(result.document.pages)
+                if pages_left < 0:
+                    raise page_limit_error()
             result.document.id = identifier
             result.document.filename = filename
             result.document.mime_type = mime_type
@@ -153,6 +174,8 @@ class IngestionService:
             if classifier is not None:
                 try:
                     prediction = classifier.predict(classification_text(result.document))
+                except FeatureUnavailable as error:
+                    result.warnings.append(str(error))
                 except (OSError, ValueError, RuntimeError):
                     result.warnings.append("Document type classifier is unavailable.")
                 else:

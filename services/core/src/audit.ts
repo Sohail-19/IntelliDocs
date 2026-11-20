@@ -1,9 +1,10 @@
-import { randomUUID } from 'node:crypto';
 import { isIP } from 'node:net';
 
-import type { Request, RequestHandler, Response } from 'express';
+import type { Request, Response } from 'express';
 import type { Pool, PoolClient } from 'pg';
 import type { AuditEntry as AuditEntryWire } from '../../../contracts/core-api.v1.js';
+
+export { requestLifecycle as assignRequestId } from './runtime.js';
 
 export interface AuditRequest {
   requestId: string;
@@ -46,13 +47,6 @@ export interface AuditReader {
     next_cursor: number | null;
   }>;
 }
-
-export const assignRequestId: RequestHandler = (_request, response, next) => {
-  const id = randomUUID();
-  response.locals.requestId = id;
-  response.set('X-Request-ID', id);
-  next();
-};
 
 export function auditRequest(request: Request, response: Response): AuditRequest {
   const requestId: unknown = response.locals.requestId;
@@ -98,6 +92,8 @@ export async function writeAudit(
   context: AuditContext,
   event: AuditEvent,
 ): Promise<void> {
+  // Public demo audit rows retain event metadata without keeping expired source content.
+  const retainPayload = process.env.DEMO_MODE !== 'true';
   await client.query(
     'INSERT INTO audit_log (org_id, actor_user_id, action, entity_type, entity_id, "before", "after", request_id, ip) ' +
       'VALUES ($1, $2, $3, $4, $5, $6::jsonb, $7::jsonb, $8, $9::inet)',
@@ -107,8 +103,8 @@ export async function writeAudit(
       event.action,
       event.entityType,
       event.entityId,
-      event.before === null ? null : JSON.stringify(event.before),
-      event.after === null ? null : JSON.stringify(event.after),
+      retainPayload && event.before !== null ? JSON.stringify(event.before) : null,
+      retainPayload && event.after !== null ? JSON.stringify(event.after) : null,
       context.requestId,
       context.ip,
     ],

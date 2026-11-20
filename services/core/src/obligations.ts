@@ -72,6 +72,7 @@ export interface ObligationRepository {
   documentState(docId: string, orgId: number): Promise<DocumentExtractionState | undefined>;
   replace(result: DocumentExtractionResult, audit: AuditContext): Promise<void>;
   recordFailure(docId: string, audit: AuditContext): Promise<void>;
+  recordDeferred?(docId: string, audit: AuditContext, reason: string): Promise<void>;
   mutate(
     docId: string,
     id: string,
@@ -249,6 +250,24 @@ export class PostgresObligationRepository implements ObligationRepository {
         entityId: docId,
         before,
         after: { ...before, extraction_status: 'failed', extraction_error: extractionFailure },
+      });
+    });
+  }
+
+  async recordDeferred(docId: string, audit: AuditContext, reason: string): Promise<void> {
+    await inTransaction(this.pool, async (connection) => {
+      const { id, before } = await this.extractionSnapshot(connection, docId, audit.orgId);
+      if (before.extraction_status === 'completed' || before.extraction_error === reason) return;
+      await connection.query(
+        "UPDATE documents SET extraction_status='pending', extraction_error=$2 WHERE id=$1",
+        [id, reason],
+      );
+      await writeAudit(connection, audit, {
+        action: 'obligations.extraction.deferred',
+        entityType: 'document',
+        entityId: docId,
+        before,
+        after: { ...before, extraction_status: 'pending', extraction_error: reason },
       });
     });
   }

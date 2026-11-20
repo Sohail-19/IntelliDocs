@@ -11,6 +11,7 @@ import { principal } from './auth/routes.js';
 import type { Guard } from './auth/routes.js';
 import type { DetectRelations } from './relations/detection.js';
 import type { ExtractionResult, IntelligenceClient, Obligation } from './intelligence/client.js';
+import { llmProblem } from './intelligence/client.js';
 import { extractionFailure, extractionStatuses } from './obligations.js';
 import type {
   ExtractedObligation,
@@ -94,7 +95,12 @@ export function runExtraction(
       }
       await repository.replace({ ...result, obligations }, audit);
       return result;
-    } catch {
+    } catch (error) {
+      const problem = llmProblem(error);
+      if (problem) {
+        await repository.recordDeferred?.(id, audit, problem.message);
+        throw error;
+      }
       await repository.recordFailure(id, audit);
       throw new ExtractionRouteError(502, extractionFailure);
     }
@@ -189,13 +195,19 @@ export function obligationRouter(
         try {
           await detect?.(id, audit);
           response.json(result);
-        } catch {
+        } catch (error) {
+          const problem = llmProblem(error);
           response
-            .status(502)
-            .json({ extraction_result: result, error: 'Relation detection failed' });
+            .status(problem?.status ?? 502)
+            .json({
+              extraction_result: result,
+              error: problem?.message ?? 'Relation detection failed',
+            });
         }
       })().catch((error: unknown) => {
-        if (error instanceof ExtractionRouteError)
+        const problem = llmProblem(error);
+        if (problem) response.status(problem.status).json({ error: problem.message });
+        else if (error instanceof ExtractionRouteError)
           response.status(error.status).json({ error: error.message });
         else next(error);
       });

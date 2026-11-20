@@ -182,6 +182,8 @@ def validate_openapi(schemas: dict[Path, dict[str, Any]]) -> None:
     source_endpoint = "/v1/documents/{doc_id}/source"
     expected = {
         "/health": "get",
+        "/ready": "get",
+        "/v1/documents/{doc_id}": "delete",
         "/v1/ingest": "post",
         source_endpoint: "get",
         "/v1/index": "post",
@@ -209,8 +211,11 @@ def validate_openapi(schemas: dict[Path, dict[str, Any]]) -> None:
         response_schemas = [
             body.get("content", {}).get("application/json", {}).get("schema", {})
             for body in operation["responses"].values()
+            if "application/json" in body.get("content", {})
         ]
-        for schema_ref in [request_schema, *response_schemas]:
+        if method == "post" and not response_schemas:
+            raise ContractError(f"{endpoint} needs a versioned response schema")
+        for schema_ref in [*([request_schema] if method == "post" else []), *response_schemas]:
             ref = schema_ref.get("$ref") if isinstance(schema_ref, dict) else None
             if not ref:
                 raise ContractError(f"contracts/openapi/intelligence.v1.yaml: {method.upper()} {endpoint} bodies must $ref schemas")

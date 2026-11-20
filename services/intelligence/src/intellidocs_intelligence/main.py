@@ -5,7 +5,17 @@ from contextlib import AbstractContextManager
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import Depends, FastAPI, File, Form, HTTPException, Query, UploadFile
+from fastapi import (
+    Depends,
+    FastAPI,
+    File,
+    Form,
+    HTTPException,
+    Query,
+    Request,
+    Response,
+    UploadFile,
+)
 from fastapi.responses import FileResponse, JSONResponse
 
 from app.answering import AnswerFactory, answerer_from_env
@@ -17,7 +27,10 @@ from app.retrieval.filters import InvalidFilter
 from app.search import SearchFactory, search_from_env
 from app.storage import Storage
 from app.summarization import SummaryService, summarizer_from_env
+from app.vector_store import QdrantStore
 
+from .embeddings import configured_embedder
+from .http_runtime import InternalHTTP, lifespan, readiness
 from .models import (
     Answer,
     AnswerRequest,
@@ -34,8 +47,21 @@ from .models import (
     SummaryRequest,
     UploadMetadata,
 )
+from .runtime import FeatureUnavailable, Runtime, require_llm
 
-app = FastAPI(title="IntelliDocs Intelligence API", version="v1")
+app = FastAPI(title="IntelliDocs Intelligence API", version="v1", lifespan=lifespan)
+app.add_middleware(InternalHTTP)
+
+
+@app.exception_handler(FeatureUnavailable)
+async def feature_unavailable(_request: Request, error: FeatureUnavailable) -> JSONResponse:
+    return JSONResponse(
+        {"detail": {"code": error.code, "message": str(error)}},
+        status_code=error.status,
+        headers={"Cache-Control": "no-store"},
+    )
+
+
 SummaryFactory = Callable[[], AbstractContextManager[SummaryService]]
 
 
@@ -70,6 +96,12 @@ def get_summary_factory(storage: Annotated[Storage, Depends(storage_from_env)]) 
 def health() -> dict[str, str]:
     """Return the service liveness state."""
     return {"status": "ok"}
+
+
+@app.get("/ready")
+def ready() -> JSONResponse:
+    status, payload = readiness()
+    return JSONResponse(payload, status_code=status, headers={"Cache-Control": "no-store"})
 
 
 @app.post(
@@ -168,6 +200,33 @@ def document_source(
     )
 
 
+@app.delete("/v1/documents/{doc_id}", status_code=204)
+def delete_demo_document(
+    doc_id: UUID,
+    org_id: Annotated[str, Query(pattern=r"^[A-Za-z0-9_-]+$")],
+    storage: Annotated[Storage, Depends(storage_from_env)],
+) -> Response:
+    """Purge an expired document selected by Core's demo retention job."""
+    if not Runtime.from_env().demo:
+        raise HTTPException(404, "Demo cleanup is disabled")
+    identifier = str(doc_id)
+    store = QdrantStore.from_env(configured_embedder())
+    try:
+        try:
+            with storage.index_lock(identifier):
+                parsed = storage.load_result(identifier)
+                if parsed.org_id != org_id:
+                    raise HTTPException(404, "Stored document not found in the organization")
+                store.delete_document(identifier, org_id=org_id)
+                storage.delete(identifier)
+        except FileNotFoundError:
+            # A retry after partial cleanup may only have vector data left.
+            store.delete_document(identifier, org_id=org_id)
+    finally:
+        store.client.close()
+    return Response(status_code=204)
+
+
 @app.post("/v1/search", response_model=SearchResponse, response_model_exclude_none=True)
 def search(
     request: SearchRequest,
@@ -189,11 +248,14 @@ def answer(
     answer_factory: Annotated[AnswerFactory, Depends(get_answer_factory)],
 ) -> Answer:
     """Return only source-verified claims, or an explicit abstention."""
+    require_llm(Runtime.from_env())
     try:
         with answer_factory() as service:
             return service.answer(request)
     except InvalidFilter as error:
         raise HTTPException(422, str(error)) from error
+    except FeatureUnavailable:
+        raise
     except Exception as error:
         raise HTTPException(503, "Answer service unavailable") from error
 
@@ -204,6 +266,7 @@ def summarize(
     factory: Annotated[SummaryFactory, Depends(get_summary_factory)],
 ) -> Summary:
     """Summarize a stored document using the assignment snapshot supplied by Core."""
+    require_llm(Runtime.from_env())
     try:
         if str(UUID(request.doc_id)) != request.doc_id:
             raise FileNotFoundError(request.doc_id)
@@ -211,7 +274,7 @@ def summarize(
             return service.summarize(request, assigned_obligations=request.assigned_obligations)
     except FileNotFoundError as error:
         raise HTTPException(404, "Stored document not found") from error
-    except HTTPException:
+    except (HTTPException, FeatureUnavailable):
         raise
     except ValueError as error:
         raise HTTPException(422, "Summary request could not be applied") from error
@@ -225,6 +288,7 @@ def extract_obligations(
     factory: Annotated[ExtractionFactory, Depends(get_extraction_factory)],
 ) -> ExtractionResult:
     """Extract and verify obligations from the document's indexed chunks."""
+    require_llm(Runtime.from_env())
     try:
         with factory() as service:
             return service.extract(request.doc_id, org_id=request.org_id)
@@ -232,7 +296,7 @@ def extract_obligations(
         raise HTTPException(404, "Stored document not found") from error
     except IndexNotReady as error:
         raise HTTPException(409, str(error)) from error
-    except HTTPException:
+    except (HTTPException, FeatureUnavailable):
         raise
     except Exception as error:
         raise HTTPException(503, "Obligation extraction failed") from error
@@ -244,6 +308,7 @@ def detect_relations(
     factory: Annotated[RelationFactory, Depends(get_relation_factory)],
 ) -> RelationResult:
     """Return evidence-checked relation proposals for an indexed document."""
+    require_llm(Runtime.from_env())
     try:
         with factory() as service:
             return service.detect(request.doc_id, org_id=request.org_id)
@@ -251,7 +316,7 @@ def detect_relations(
         raise HTTPException(404, "Stored document not found") from error
     except IndexNotReady as error:
         raise HTTPException(409, str(error)) from error
-    except HTTPException:
+    except (HTTPException, FeatureUnavailable):
         raise
     except Exception as error:
         raise HTTPException(503, "Relation detection failed") from error

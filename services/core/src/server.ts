@@ -3,8 +3,10 @@ import { inTransaction, PostgresAuditReader, writeAudit } from './audit.js';
 import { orgPolicy } from './auth/policy.js';
 import { PostgresAuthRepository } from './auth/repository.js';
 import { AuthService, authSettingsFromEnv } from './auth/service.js';
-import { loadNamedOrgConfigs, OrgConfigError } from './config/loader.js';
-import { createDatabasePool } from './database.js';
+import { loadNamedOrgConfigs } from './config/loader.js';
+import { configuredCors } from './cors.js';
+import { createDatabasePool, databaseReady } from './database.js';
+import { DemoCleanup, demoUploadAdmission, scheduleDemoCleanup } from './demo.js';
 import { PostgresDocumentRepository } from './documents.js';
 import { IntelligenceClient } from './intelligence/client.js';
 import { PostgresObligationRepository } from './obligations.js';
@@ -12,13 +14,18 @@ import { ObligationReviewRepository } from './review/repository.js';
 import { PostgresRelationRepository } from './relations/repository.js';
 import { configuredRouting } from './routing/config.js';
 import { PostgresRoutingService } from './routing/service.js';
+import { flag, logEvent, runtimeFromEnv } from './runtime.js';
 import { scheduleTaskJob, TaskJob, taskIntervalMs } from './tasks/job.js';
 import { TaskRepository } from './tasks/repository.js';
 
 async function start(): Promise<void> {
-  const port = Number.parseInt(process.env.CORE_PORT ?? '3000', 10);
+  const port = Number(process.env.CORE_PORT || process.env.PORT || '3000');
+  if (!Number.isInteger(port) || port < 1 || port > 65535) throw new Error('Invalid listen port');
   const taskInterval = taskIntervalMs();
-  const settings = authSettingsFromEnv();
+  const runtime = runtimeFromEnv();
+  flag('LLM_ENABLED', true);
+  const settings = authSettingsFromEnv(runtime.production);
+  configuredCors(undefined, runtime.production);
   const configs = await loadNamedOrgConfigs(process.env.ORG_CONFIG_DIR);
   const policies = new Map(
     configs.flatMap(({ slug, config }) => {
@@ -48,11 +55,18 @@ async function start(): Promise<void> {
       await users.seed(slug, config.departments, Object.keys(config.roles ?? {}));
     }
     const auth = await AuthService.create(users, policies, settings);
-    const documents = new PostgresDocumentRepository(pool);
+    const documents = new PostgresDocumentRepository(pool, runtime.demo);
+    const intelligence = new IntelligenceClient();
+    const relations = new PostgresRelationRepository(pool);
     const orgConfigs = new Map(configs.map(({ slug, config }) => [slug, config]));
     const server = createApp(
       {
-        intelligence: new IntelligenceClient(),
+        intelligence,
+        readiness: {
+          postgres: () => databaseReady(pool),
+          intelligence: () => intelligence.ready(),
+        },
+        ...(runtime.demo && { uploadAdmission: demoUploadAdmission(pool, runtime) }),
         documents,
         orgConfigs,
         documentBrowser: { reader: documents, configs: orgConfigs },
@@ -60,15 +74,33 @@ async function start(): Promise<void> {
         routing,
         tasks: new TaskRepository(pool, reviewRoles),
         reviews: new ObligationReviewRepository(pool, routing, orgConfigs),
-        relations: new PostgresRelationRepository(pool),
+        relations,
         audit: new PostgresAuditReader(pool),
         summaryPreviewAudit: (context, event) =>
           inTransaction(pool, (transaction) => writeAudit(transaction, context, event)),
       },
       { auth },
-    ).listen(port, () => {
-      console.log('Core service listening on port ' + port);
+    ).listen(port, '0.0.0.0', () => {
+      logEvent('server_started');
       server.once('close', scheduleTaskJob(new TaskJob(pool, reviewRoles), taskInterval));
+      if (runtime.demo)
+        server.once(
+          'close',
+          scheduleDemoCleanup(
+            new DemoCleanup(
+              pool,
+              intelligence.purgeDemoDocument.bind(intelligence),
+              relations,
+              runtime.retentionDays,
+            ),
+            runtime.sweepMs,
+          ),
+        );
+    });
+    server.once('error', () => {
+      logEvent('startup_failed');
+      process.exitCode = 1;
+      void pool.end();
     });
   } catch (error) {
     await pool.end();
@@ -76,11 +108,7 @@ async function start(): Promise<void> {
   }
 }
 
-void start().catch((error: unknown) => {
-  console.error(
-    error instanceof OrgConfigError
-      ? error.message
-      : 'Core startup failed. Check auth environment settings, org config, and database migrations.',
-  );
+void start().catch(() => {
+  logEvent('startup_failed');
   process.exitCode = 1;
 });

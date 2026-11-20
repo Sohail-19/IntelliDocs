@@ -10,14 +10,17 @@ from types import SimpleNamespace
 from typing import Any
 
 import pytest
+from fastapi.testclient import TestClient
 
 from intellidocs_intelligence.embeddings import (
     BgeM3Embedder,
     FakeEmbedder,
     SentenceTransformerEmbedder,
     SparseOverrideEmbedder,
+    configured_embedder,
     embedder_from_env,
 )
+from intellidocs_intelligence.main import app
 
 
 @pytest.fixture(autouse=True)
@@ -38,6 +41,30 @@ def test_fake_is_deterministic_and_json_serializable() -> None:
     assert first[2]["sparse"] == {"indices": [], "values": []}
     assert FakeEmbedder().embed([]) == []
     json.dumps(first, allow_nan=False)
+
+
+def test_lightweight_profile_overrides_backend_and_does_not_load_on_health(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("EMBEDDING_BACKEND", "fake")
+    monkeypatch.setenv("SPARSE_EMBEDDING_BACKEND", "auto")
+    monkeypatch.delenv("EMBEDDING_LIGHTWEIGHT", raising=False)
+    assert isinstance(configured_embedder(), FakeEmbedder)
+
+    def eager_load(_self: SentenceTransformerEmbedder) -> None:
+        pytest.fail("Selecting the profile or checking health must not load E5")
+
+    monkeypatch.setattr(SentenceTransformerEmbedder, "load", eager_load)
+    monkeypatch.setenv("EMBEDDING_LIGHTWEIGHT", "true")
+    monkeypatch.setenv("EMBEDDING_LIGHTWEIGHT_MODEL", "/fixture/e5")
+    embedder = configured_embedder()
+    assert isinstance(embedder, SparseOverrideEmbedder)
+    assert embedder.sparse_requires_idf
+    assert isinstance(embedder.delegate, SentenceTransformerEmbedder)
+    assert embedder.delegate.model_name == "/fixture/e5"
+    assert embedder.delegate.prompt == "passage: " and embedder.delegate.query_prompt == "query: "
+    with TestClient(app) as client:
+        assert client.get("/health").json() == {"status": "ok"}
 
 
 def test_fake_is_stable_across_python_hash_seeds() -> None:
