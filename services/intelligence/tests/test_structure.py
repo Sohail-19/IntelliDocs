@@ -8,7 +8,10 @@ import pytest
 from app.parsing import TesseractParser
 from app.parsing.ocr_structure import ocr_blocks
 from app.parsing.structure import content_text, preserve_structure
-from intellidocs_intelligence.models import Page, TextBlock
+from intellidocs_intelligence.models import OrgConfig, Page, TextBlock
+
+CONFIG = Path(__file__).resolve().parents[3] / "config/orgs"
+EXAMPLE = OrgConfig.model_validate_json((CONFIG / "example.yaml").read_text("utf-8"))
 
 
 def block(text: str, y: float = 100, **fields: object) -> TextBlock:
@@ -28,7 +31,7 @@ def block(text: str, y: float = 100, **fields: object) -> TextBlock:
 )
 def test_clause_numbers(prefix: str) -> None:
     pages = [Page(page=1, language="en", blocks=[block(f"{prefix} Original fixture text.")])]
-    result = preserve_structure(pages, {1: (300, 400)}, ["en"])
+    result = preserve_structure(pages, {1: (300, 400)}, ["en"], EXAMPLE.document_structure)
     assert result[0].blocks[0].clause_number == prefix
 
 
@@ -54,7 +57,9 @@ def test_nested_heading_paths_across_pages() -> None:
             ],
         ),
     ]
-    result = preserve_structure(pages, {1: (300, 400), 2: (300, 400)}, ["en"])
+    result = preserve_structure(
+        pages, {1: (300, 400), 2: (300, 400)}, ["en"], EXAMPLE.document_structure
+    )
     assert result[0].blocks[1].heading_level == 2
     assert result[0].blocks[2].heading_path == ["1. Terms", "1.1 Delivery"]
     assert result[1].blocks[0].heading_level == 3
@@ -79,7 +84,9 @@ def test_furniture_and_language_are_page_specific() -> None:
         )
         for index, text in enumerate([hindi, english], 1)
     ]
-    result = preserve_structure(pages, {1: (300, 400), 2: (300, 400)}, ["en", "hi"])
+    result = preserve_structure(
+        pages, {1: (300, 400), 2: (300, 400)}, ["en", "hi"], EXAMPLE.document_structure
+    )
     assert [page.language for page in result] == ["hi", "en"]
     for page in result:
         assert page.blocks[0].type == "header_footer"
@@ -110,7 +117,7 @@ def test_ocr_table_cells_and_clause_lines_without_system_ocr() -> None:
 @pytest.mark.skipif(shutil.which("tesseract") is None, reason="System Tesseract is not installed")
 def test_structured_scanned_fixture() -> None:
     path = Path(__file__).parent / "fixtures/structured-scanned.pdf"
-    result = TesseractParser().parse(path, ["en"])
+    result = TesseractParser(structure=EXAMPLE.document_structure).parse(path, ["en"])
     numbers = {block.clause_number for page in result.document.pages for block in page.blocks}
     assert {"1.", "1.1", "(a)", "Clause 4.2", "Article 5", "Section 3"} <= numbers
     for page in result.document.pages:
@@ -126,3 +133,25 @@ def test_structured_scanned_fixture() -> None:
             x0, y0, x1, y1 = item.bbox
             assert 0 <= x0 <= x1 <= 600
             assert 0 <= y0 <= y1 <= 800
+
+
+def test_other_org_recognizes_its_own_labels() -> None:
+    org = OrgConfig.model_validate_json((CONFIG / "example2.yaml").read_text("utf-8"))
+    (page,) = preserve_structure(
+        [
+            Page(
+                page=1,
+                language=org.languages[0],
+                blocks=[
+                    block("Sección 2 Control de cloro"),
+                    block("Cláusula 2.1 Registre la medición."),
+                    block("Página 1 de 2", y=375),
+                ],
+            )
+        ],
+        {1: (300, 400)},
+        org.languages,
+        org.document_structure,
+    )
+    assert [item.type for item in page.blocks] == ["heading", "clause", "header_footer"]
+    assert page.blocks[1].heading_path == ["Sección 2 Control de cloro"]

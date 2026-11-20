@@ -12,6 +12,7 @@ export interface AuditRequest {
 
 export interface AuditContext extends AuditRequest {
   orgId: number;
+  orgSlug?: string;
   actorUserId: number | null;
 }
 
@@ -63,9 +64,14 @@ export function auditRequest(request: Request, response: Response): AuditRequest
 export function auditContext(
   request: Request,
   response: Response,
-  actor: { orgId: number; id: number },
+  actor: { orgId: number; orgSlug?: string; id: number },
 ): AuditContext {
-  return { ...auditRequest(request, response), orgId: actor.orgId, actorUserId: actor.id };
+  return {
+    ...auditRequest(request, response),
+    orgId: actor.orgId,
+    actorUserId: actor.id,
+    ...(actor.orgSlug === undefined ? {} : { orgSlug: actor.orgSlug }),
+  };
 }
 
 export async function inTransaction<T>(

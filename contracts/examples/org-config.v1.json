@@ -4,6 +4,12 @@
     "hi"
   ],
   "ocr_engine": "tesseract",
+  "document_structure": {
+    "clause_labels": ["Clause", "खंड"],
+    "heading_labels": ["Article", "Section", "अनुच्छेद", "धारा"],
+    "sentence_abbreviations": ["Mr.", "Mrs.", "Ms.", "Dr.", "Prof.", "Sr.", "Jr.", "vs.", "etc.", "approx.", "Dept.", "Fig.", "Inc.", "Ltd.", "est.", "Sec.", "Vol.", "pp.", "para.", "Art.", "No.", "Nos.", "cf.", "e.g.", "i.e.", "al."],
+    "page_number_patterns": ["(?:Page\\s+)?(?:\\d+|[ivxlcdm]+)(?:\\s+of\\s+\\d+)?", "पृष्ठ\\s+\\d+(?:\\s*/\\s*\\d+)?"]
+  },
   "document_types": [
     "agreement",
     "invoice"
@@ -164,6 +170,41 @@
     "officer": {},
     "viewer": {}
   },
+  "summary": {
+    "settings": { "max_length": 600, "style": "bullets" },
+    "not_relevant_reasons": {
+      "en": "No cited points relevant to this audience were found.",
+      "hi": "इस समूह के लिए कोई प्रासंगिक और सत्यापित बिंदु नहीं मिला।"
+    },
+    "department_profiles": {
+      "legal": {
+        "focus_topics": ["Contract changes", "Liability", "Notice and termination provisions"],
+        "responsibilities": ["Review legal obligations and track notice periods"],
+        "glossary": {
+          "en": { "termination notice": ["notice of termination", "cancellation notice"] },
+          "hi": { "समाप्ति सूचना": ["समाप्ति का नोटिस", "रद्द करने की सूचना"] }
+        }
+      },
+      "finance": {
+        "focus_topics": ["Payment deadlines", "Financial reporting"],
+        "responsibilities": ["Verify amounts and schedule payments"],
+        "glossary": {
+          "en": { "invoice": ["supplier bill"], "payment deadline": ["due date", "payment due"] },
+          "hi": { "चालान": ["बिल"], "भुगतान की समयसीमा": ["भुगतान की अंतिम तिथि", "देय तिथि"] }
+        }
+      }
+    },
+    "role_profiles": {
+      "finance_officer": {
+        "focus_topics": ["Invoice approvals", "Reconciliation reports"],
+        "responsibilities": ["Reconcile invoices and file periodic reports"],
+        "glossary": {
+          "en": { "invoice": ["bill", "supplier invoice"] },
+          "hi": { "चालान": ["बिल", "आपूर्तिकर्ता का बिल"] }
+        }
+      }
+    }
+  },
   "access": {
     "bootstrap_role": "admin",
     "registration_role": "viewer",
@@ -180,6 +221,7 @@
         "obligations:assign",
         "obligations:review",
         "relations:review",
+        "documents:summary-preview",
         "tasks:read",
         "tasks:transition",
         "users:roles"
@@ -195,6 +237,7 @@
         "obligations:assign",
         "obligations:review",
         "relations:review",
+        "documents:summary-preview",
         "tasks:read",
         "tasks:transition"
       ],

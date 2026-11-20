@@ -6,15 +6,24 @@ from importlib.metadata import version
 from pathlib import Path
 from typing import Any
 
-from intellidocs_intelligence.models import Page, ParseResult, TableBlock, TextBlock
+from intellidocs_intelligence.models import (
+    DocumentStructure,
+    Page,
+    ParseResult,
+    TableBlock,
+    TextBlock,
+)
 
 from .base import DocumentParser, bounded_bbox, dependency, result_for
 from .languages import language_codes
 
 
 class DoclingParser(DocumentParser):
-    def __init__(self, artifacts_path: Path | None = None) -> None:
+    def __init__(
+        self, artifacts_path: Path | None = None, *, structure: DocumentStructure | None = None
+    ) -> None:
         self.artifacts_path = artifacts_path
+        self.structure = structure
 
     def _converter(self) -> Any:
         if self.artifacts_path is None or not self.artifacts_path.is_dir():
@@ -129,4 +138,5 @@ class DoclingParser(DocumentParser):
                 for number, page in document.pages.items()
             },
             languages=languages,
+            structure=self.structure,
         )

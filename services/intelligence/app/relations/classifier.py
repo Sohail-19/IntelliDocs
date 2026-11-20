@@ -117,14 +117,14 @@ def _span(citation: Citation | None, chunk: Chunk) -> list[int] | str:
     return [citation.char_start, citation.char_end]
 
 
-def _quote_context(chunk: Chunk, citation: Citation | None) -> str:
+def _quote_context(chunk: Chunk, citation: Citation | None, abbreviations: Sequence[str]) -> str:
     if citation is None:
         return ""
     start = citation.char_start - chunk.char_start
     end = citation.char_end - chunk.char_start
     return " ".join(
         chunk.text[left:right]
-        for left, right in sentence_spans(chunk.text)
+        for left, right in sentence_spans(chunk.text, abbreviations)
         if left < end and right > start
     )
 
@@ -143,6 +143,7 @@ class RelationClassifier:
         validated = _ValidatedProvider(provider, max_retries)
         self.provider = CachedLLMProvider(validated, cache) if cache is not None else validated
         self.verifier = CitationVerifier(VerificationConfig(fuzzy_threshold=1.0))
+        self.abbreviations = org.document_structure.sentence_abbreviations
         rules = org.relation_detection
         self.change_cues = {key.casefold(): value for key, value in rules.change_cues.items()}
         self.reference_cues = {key.casefold(): value for key, value in rules.reference_cues.items()}
@@ -193,7 +194,10 @@ class RelationClassifier:
             self.change_cues, source.language, {}
         )
         blocked_cues = _localized(self.nonoperative_cues, source.language, [])
-        source_sentences = (source.text[left:right] for left, right in sentence_spans(source.text))
+        source_sentences = (
+            source.text[left:right]
+            for left, right in sentence_spans(source.text, self.abbreviations)
+        )
         has_operative_change = any(
             any(_in_text(sentence, cues) for cues in changes.values())
             and not _in_text(sentence, blocked_cues)
@@ -215,7 +219,7 @@ class RelationClassifier:
             )
         else:
             recognized_cue = _in_text(source_quote, changes.get(kind, [])) and not _in_text(
-                _quote_context(source, source_citation), blocked_cues
+                _quote_context(source, source_citation, self.abbreviations), blocked_cues
             )
             if (
                 kind == "amends"

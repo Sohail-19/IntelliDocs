@@ -17,7 +17,11 @@ def parser_from_config(config: OrgConfig, *, artifacts_path: Path | None = None)
         raise ValueError(f"Unsupported OCR engine: {config.ocr_engine!r}; use docling or tesseract")
     language_codes(config.languages)
     if config.ocr_engine == "tesseract":
-        return TesseractParser()
+        return TesseractParser(structure=config.document_structure)
     if artifacts_path is None and os.environ.get("DOCLING_ARTIFACTS_PATH"):
         artifacts_path = Path(os.environ["DOCLING_ARTIFACTS_PATH"])
-    return ParsingRouter(DoclingParser(artifacts_path), TesseractParser())
+    return ParsingRouter(
+        DoclingParser(artifacts_path, structure=config.document_structure),
+        TesseractParser(structure=config.document_structure),
+        structure=config.document_structure,
+    )

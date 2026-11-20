@@ -4,6 +4,7 @@ import math
 import os
 from collections.abc import Sequence
 from threading import RLock
+from uuid import UUID, uuid5
 
 from qdrant_client import QdrantClient, models
 
@@ -31,6 +32,19 @@ def chunk_from_payload(payload: models.Payload | None) -> Chunk:
     return Chunk.model_validate(
         {key: value for key, value in payload.items() if key != RELATION_KEYS_FIELD}
     )
+
+
+def _point_id(chunk_identifier: str, org_id: str | None) -> str:
+    return str(uuid5(UUID(chunk_identifier), org_id)) if org_id is not None else chunk_identifier
+
+
+def _document_conditions(doc_id: str, org_id: str | None) -> list[models.Condition]:
+    tenant = (
+        models.IsEmptyCondition(is_empty=models.PayloadField(key="org_id"))
+        if org_id is None
+        else models.FieldCondition(key="org_id", match=models.MatchValue(value=org_id))
+    )
+    return [models.FieldCondition(key="doc_id", match=models.MatchValue(value=doc_id)), tenant]
 
 
 class QdrantStore(VectorStore):
@@ -139,7 +153,10 @@ class QdrantStore(VectorStore):
     ) -> int:
         if not chunks:
             return 0
-        identifiers = [chunk_id(chunk.doc_id, chunk.char_start, chunk.char_end) for chunk in chunks]
+        identifiers = [
+            _point_id(chunk_id(chunk.doc_id, chunk.char_start, chunk.char_end), chunk.org_id)
+            for chunk in chunks
+        ]
         if len(set(identifiers)) != len(identifiers):
             raise ValueError("Duplicate document/offset identities in upsert batch")
         with self._lock:
@@ -183,7 +200,9 @@ class QdrantStore(VectorStore):
             self.client.upsert(collection_name=self.collection_name, points=points, wait=True)
         return len(points)
 
-    def delete_document(self, doc_id: str, *, keep_chunk_ids: Sequence[str] = ()) -> None:
+    def delete_document(
+        self, doc_id: str, *, keep_chunk_ids: Sequence[str] = (), org_id: str | None = None
+    ) -> None:
         if not doc_id:
             raise ValueError("A document ID is required")
         with self._lock:
@@ -194,13 +213,16 @@ class QdrantStore(VectorStore):
                 wait=True,
                 points_selector=models.FilterSelector(
                     filter=models.Filter(
-                        must=[
-                            models.FieldCondition(
-                                key="doc_id", match=models.MatchValue(value=doc_id)
-                            ),
-                        ],
+                        must=_document_conditions(doc_id, org_id),
                         must_not=(
-                            [models.HasIdCondition(has_id=list(keep_chunk_ids))]
+                            [
+                                models.HasIdCondition(
+                                    has_id=[
+                                        _point_id(identifier, org_id)
+                                        for identifier in keep_chunk_ids
+                                    ]
+                                )
+                            ]
                             if keep_chunk_ids
                             else None
                         ),
@@ -212,14 +234,7 @@ class QdrantStore(VectorStore):
         """Read all indexed chunks for one document without querying vectors."""
         if not self.client.collection_exists(self.collection_name):
             return []
-        conditions: list[models.Condition] = [
-            models.FieldCondition(key="doc_id", match=models.MatchValue(value=doc_id))
-        ]
-        if org_id is not None:
-            conditions.append(
-                models.FieldCondition(key="org_id", match=models.MatchValue(value=org_id))
-            )
-        where = models.Filter(must=conditions)
+        where = models.Filter(must=_document_conditions(doc_id, org_id))
         chunks: list[Chunk] = []
         offset = None
         while True:

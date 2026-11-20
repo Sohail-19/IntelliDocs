@@ -66,6 +66,8 @@ class SearchService:
         start = perf_counter()
         # A final top_k must not cut off the pool before the reranker sees it.
         candidates = self.retriever.retrieve_pool(request.query, request.filters)
+        org_id = (request.filters or {}).get("org_id")
+        candidates = [candidate for candidate in candidates if candidate.chunk.org_id == org_id]
         retrieved = perf_counter()
         ranked = self.reranker.rerank(request.query, candidates, request.top_k)
         reranked = perf_counter()
@@ -73,8 +75,9 @@ class SearchService:
         if self.storage is not None:
             for doc_id in dict.fromkeys(candidate.chunk.doc_id for candidate in ranked):
                 try:
-                    documents[doc_id] = canonical_document(
-                        self.storage.load_result(doc_id).document
+                    parsed = self.storage.load_result(doc_id)
+                    documents[doc_id] = (
+                        canonical_document(parsed.document) if parsed.org_id == org_id else None
                     )
                 except (OSError, ValueError):
                     documents[doc_id] = None

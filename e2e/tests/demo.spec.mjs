@@ -136,7 +136,7 @@ test('completes an obligation and flags a task after confirming a circular amend
   await page.getByRole('link', { name: 'Task feed' }).click();
   await page.getByRole('tab', { name: 'Stale tasks' }).click();
   const stale = page.getByRole('row').filter({ hasText: fixture.original.action });
-  await expect(stale.getByText('Stale · manager decision required')).toBeVisible();
+  await expect(stale.getByText('Stale · review required')).toBeVisible();
   await expect(stale.getByRole('button', { name: 'Acknowledge' })).toHaveCount(0);
   await expect(stale.getByRole('button', { name: 'Keep task' })).toBeVisible();
   await expect(stale.getByRole('button', { name: 'Update task' })).toBeVisible();

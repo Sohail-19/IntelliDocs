@@ -23,6 +23,7 @@ function authorized(auth: AuthService, check: (user: Principal) => boolean): Req
       .then((user) => {
         if (!check(user)) throw new AuthError(403, 'Access denied');
         response.locals.principal = user;
+        response.set('Cache-Control', 'private, no-store');
         next();
       })
       .catch((error: unknown) => {

@@ -160,7 +160,7 @@ def test_extract_requires_index_and_rejects_missing_chunks(
             client.post("/v1/extract-obligations", json={"doc_id": identifier}).status_code == 409
         )
         assert client.post("/v1/index", json={"doc_id": identifier}).status_code == 200
-        store.delete_document(identifier)
+        store.delete_document(identifier, org_id="example")
         assert (
             client.post("/v1/extract-obligations", json={"doc_id": identifier}).status_code == 409
         )

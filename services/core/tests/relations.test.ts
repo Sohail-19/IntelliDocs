@@ -184,7 +184,10 @@ describe('document relations', () => {
     });
     expect((await client.post('/api/documents/newer/index')).status).toBe(200);
     expect((await client.post('/api/documents/newer/index')).status).toBe(200);
-    expect(detect.mock.calls).toEqual([[{ doc_id: 'newer' }], [{ doc_id: 'newer' }]]);
+    expect(detect.mock.calls).toEqual([
+      [{ doc_id: 'newer', org_id: 'example' }],
+      [{ doc_id: 'newer', org_id: 'example' }],
+    ]);
     expect((await client.get('/api/relations')).status).toBe(403);
     expect((await manager(client.get('/api/relations'))).body).toMatchObject({
       relations: [{ id: proposal.id }],

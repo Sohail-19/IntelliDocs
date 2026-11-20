@@ -31,6 +31,8 @@ export type SearchResponse = Schemas['search-response.v1.schema'];
 export type AnswerRequest = Schemas['answer-request.v1.schema'];
 export type Claim = Schemas['claim.v1.schema'];
 export type Answer = Schemas['answer.v1.schema'];
+export type SummaryRequest = Schemas['summary-request.v1.schema'];
+export type Summary = Schemas['summary.v1.schema'];
 export type ExtractObligationsRequest = Schemas['extract-obligations-request.v1.schema'];
 export type Obligation = Schemas['obligation.v1.schema'];
 export type ObligationOwner = Schemas['obligation-owner.v1.schema'];
@@ -109,6 +111,10 @@ export class IntelligenceClient {
 
   answer(request: AnswerRequest): Promise<Answer> {
     return this.post('/v1/answer', request);
+  }
+
+  summarize(request: SummaryRequest): Promise<Summary> {
+    return this.post('/v1/summarize', request);
   }
 
   extractObligations(request: ExtractObligationsRequest): Promise<ExtractionResult> {

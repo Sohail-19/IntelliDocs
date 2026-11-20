@@ -20,6 +20,7 @@ from intellidocs_intelligence.embeddings import (
 from intellidocs_intelligence.models import IndexResult, ParseResult
 
 from .chunking import Chunker, ChunkingConfig
+from .ingestion import load_org
 from .storage import Storage
 from .vector_store import QdrantStore, VectorStore
 
@@ -46,9 +47,11 @@ class IndexingService:
         self.storage, self.chunker, self.embedder, self.store = storage, chunker, embedder, store
         self.batch_size = batch_size
 
-    def index(self, doc_id: str) -> IndexResult:
+    def index(self, doc_id: str, *, org_id: str | None = None) -> IndexResult:
         with self.storage.index_lock(doc_id):
             result = self.storage.load_result(doc_id)
+            if org_id is not None and result.org_id != org_id:
+                raise FileNotFoundError(doc_id)
             document = result.document
             if document.status != "ready":
                 raise ValueError("Document must be parsed successfully before indexing")
@@ -61,6 +64,11 @@ class IndexingService:
                 department=document.department,
                 doc_type=document.doc_type,
                 doc_date=document.doc_date,
+                sentence_abbreviations=(
+                    load_org(result.org_id).document_structure.sentence_abbreviations
+                    if result.org_id is not None
+                    else ()
+                ),
             )
             for chunk in chunks:
                 chunk.org_id = result.org_id
@@ -114,7 +122,9 @@ class IndexingService:
                     raise RuntimeError("Vector store did not acknowledge every chunk")
             # Upsert every new point before pruning obsolete boundaries; unrelated
             # documents and current chunks are never removed by this cleanup.
-            self.store.delete_document(doc_id, keep_chunk_ids=[chunk.id for chunk in chunks])
+            self.store.delete_document(
+                doc_id, keep_chunk_ids=[chunk.id for chunk in chunks], org_id=result.org_id
+            )
             state.update(
                 status="indexed", indexed_at=datetime.now(UTC).isoformat(), chunk_count=len(chunks)
             )

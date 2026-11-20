@@ -4,7 +4,7 @@ import { useState } from 'react';
 import { Link, useOutletContext, useParams } from 'react-router-dom';
 import type { AuthProfile, DocumentRecord } from '../../../../contracts/core-api.v1.js';
 import { useAuth } from '../auth.js';
-import { AuthorityBadge, AuthorityWarnings } from '../relations/authority.js';
+import { AuthorityBadge } from '../relations/authority.js';
 import { EmptyState, ErrorState, LoadingState } from '../states.js';
 import {
   StatusBadge,
@@ -15,6 +15,7 @@ import {
   useDocumentRetry,
 } from './document-state.js';
 import { UploadPanel } from './upload-panel.js';
+import { ForYouPanel } from './for-you-panel.js';
 import './documents.css';
 
 const pollMs = 1500;
@@ -298,7 +299,14 @@ export function DocumentDetail() {
             </div>
             <StatusBadge document={document} retrying={retry.isPending} />
           </div>
-          <AuthorityWarnings warnings={document.authority_warnings} document />
+          <ForYouPanel
+            key={JSON.stringify([
+              document.id,
+              document.authority_status,
+              document.authority_warnings?.map(({ relation_id }) => relation_id),
+            ])}
+            document={document}
+          />
           {failed && !retry.isPending && (
             <ErrorState
               title="Document processing failed"

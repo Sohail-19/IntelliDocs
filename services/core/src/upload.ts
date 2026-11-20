@@ -49,7 +49,10 @@ export function uploadRouter(
   async function indexDocument(docId: string, audit: AuditContext): Promise<IndexResult | null> {
     let indexed: IndexResult;
     try {
-      indexed = await dependencies.intelligence.index({ doc_id: docId });
+      indexed = await dependencies.intelligence.index({
+        doc_id: docId,
+        ...(audit.orgSlug && { org_id: audit.orgSlug }),
+      });
       if (indexed.doc_id !== docId) throw new Error('Index response document mismatch');
     } catch {
       await dependencies.documents.setStatus(docId, audit, 'failed', 'Indexing failed');
@@ -83,13 +86,11 @@ export function uploadRouter(
           if (extraction) await detect?.(docId, audit);
           res.json({ index_result: indexed, extraction_result: extraction });
         } catch {
-          res
-            .status(502)
-            .json({
-              index_result: indexed,
-              extraction_result: extraction,
-              error: 'Relation detection failed',
-            });
+          res.status(502).json({
+            index_result: indexed,
+            extraction_result: extraction,
+            error: 'Relation detection failed',
+          });
         }
       })().catch(next);
     });
@@ -147,15 +148,26 @@ export function uploadRouter(
       const filename = req.file.originalname;
       void (async () => {
         const result = await dependencies.intelligence.ingest(request, filename);
+        const documents: ParseResult[] = [result.parse_result];
+        const seen = new Set<string>();
+        if (result.document_id !== result.parse_result.document.id)
+          throw new Error('Ingest response document mismatch');
+        for (const parsed of documents) {
+          if (
+            seen.has(parsed.document.id) ||
+            (parsed.org_id !== undefined && parsed.org_id !== user.orgSlug)
+          )
+            throw new Error('Ingest response organization or document mismatch');
+          seen.add(parsed.document.id);
+          documents.push(...(parsed.attachments ?? []));
+        }
         await dependencies.documents.save(result, audit);
         const indexResults: IndexResult[] = [];
         const extractionResults: ExtractionResult[] = [];
         const extractionFailures: string[] = [];
         const indexFailures: string[] = [];
         const relationFailures: string[] = [];
-        const documents: ParseResult[] = [result.parse_result];
         for (const parsed of documents) {
-          documents.push(...(parsed.attachments ?? []));
           const indexed = await indexDocument(parsed.document.id, audit);
           if (!indexed) {
             indexFailures.push(parsed.document.id);

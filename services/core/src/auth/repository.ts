@@ -57,8 +57,11 @@ export interface AuthRepository {
 const roleNames =
   'ARRAY(SELECT r.name FROM user_roles ur JOIN roles r ON r.id = ur.role_id ' +
   '      WHERE ur.user_id = u.id ORDER BY r.name) AS roles';
-const principalFields = 'u.id, u.org_id AS "orgId", o.slug AS "orgSlug", ' + roleNames;
-const activeUsers = ' FROM users u JOIN organizations o ON o.id = u.org_id WHERE u.active AND ';
+const principalFields =
+  'u.id, u.org_id AS "orgId", o.slug AS "orgSlug", d.name AS department, ' + roleNames;
+const activeUsers =
+  ' FROM users u JOIN organizations o ON o.id = u.org_id ' +
+  'LEFT JOIN departments d ON d.org_id = u.org_id AND d.id = u.department_id WHERE u.active AND ';
 const principalQuery = 'SELECT ' + principalFields + activeUsers;
 const userQuery =
   'SELECT u.id, COALESCE(u.name, u.email) AS name, u.email, u.active, d.name AS department, ' +

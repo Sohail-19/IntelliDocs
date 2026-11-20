@@ -216,7 +216,7 @@ export function TasksPage() {
                     <td>
                       <span className="work-status">{statuses[task.status]}</span>
                       {task.stale && (
-                        <p className="authority-badge">Stale · manager decision required</p>
+                        <p className="authority-badge">Stale · review required</p>
                       )}
                       {task.rejection_reason && (
                         <p className="work-muted">{task.rejection_reason}</p>

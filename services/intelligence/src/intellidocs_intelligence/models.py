@@ -19,6 +19,7 @@ from pydantic import (
 )
 
 NonEmptyString = Annotated[str, Field(min_length=1)]
+NonBlankString = Annotated[str, Field(pattern=r"\S")]
 LanguageCode = Annotated[str, Field(min_length=2)]
 ObligationType = Literal["duty", "prohibition", "reporting", "payment", "review", "other"]
 ChangeRelationType = Literal["supersedes", "amends", "withdraws"]
@@ -123,6 +124,7 @@ class Chunk(ContractModel):
 
 class IndexRequest(ContractModel):
     doc_id: NonEmptyString
+    org_id: str | None = Field(default=None, pattern=r"^[A-Za-z0-9_-]+$")
 
 
 class IndexResult(ContractModel):
@@ -159,6 +161,7 @@ class Citation(ContractModel):
 
 class DetectRelationsRequest(ContractModel):
     doc_id: NonEmptyString
+    org_id: str | None = Field(default=None, pattern=r"^[A-Za-z0-9_-]+$")
 
 
 class RelationConfidenceBreakdown(ContractModel):
@@ -430,11 +433,37 @@ class OrgAccess(ContractModel):
     role_permissions: dict[str, list[NonEmptyString]]
 
 
+class SummaryProfile(ContractModel):
+    focus_topics: list[NonBlankString]
+    responsibilities: list[NonBlankString]
+    glossary: dict[str, dict[str, list[NonBlankString]]]
+
+
+class SummarySettings(ContractModel):
+    max_length: int = Field(ge=1, strict=True)
+    style: Literal["bullets", "short_paragraph"]
+
+
+class SummaryConfig(ContractModel):
+    settings: SummarySettings
+    department_profiles: dict[str, SummaryProfile] = Field(default_factory=dict)
+    role_profiles: dict[str, SummaryProfile] = Field(default_factory=dict)
+    not_relevant_reasons: dict[str, NonBlankString] = Field(default_factory=dict)
+
+
+class DocumentStructure(ContractModel):
+    clause_labels: list[NonBlankString] = Field(default_factory=list)
+    heading_labels: list[NonBlankString] = Field(default_factory=list)
+    sentence_abbreviations: list[NonBlankString] = Field(default_factory=list)
+    page_number_patterns: list[NonBlankString] = Field(default_factory=list)
+
+
 class OrgConfig(ContractModel):
     access: OrgAccess | None = None
     upload_defaults: UploadMetadata | None = None
     languages: list[LanguageCode] = Field(min_length=1)
     ocr_engine: NonEmptyString
+    document_structure: DocumentStructure = Field(default_factory=DocumentStructure)
     document_types: list[NonEmptyString]
     departments: list[NonEmptyString]
     routing_policy: RoutingPolicy | None = None
@@ -443,6 +472,14 @@ class OrgConfig(ContractModel):
     relation_detection: RelationDetectionRules = Field(default_factory=RelationDetectionRules)
     department_aliases: dict[str, list[NonEmptyString]] = Field(default_factory=dict)
     roles: dict[str, OrgRole] = Field(default_factory=dict)
+    summary: SummaryConfig | None = None
+
+    @field_validator("summary")
+    @classmethod
+    def summary_when_configured(cls, value: SummaryConfig | None) -> SummaryConfig:
+        if value is None:
+            raise ValueError("omit summary when it is not configured")
+        return value
 
 
 class IngestRequest(UploadMetadata):
@@ -512,8 +549,51 @@ class Answer(ContractModel):
     verifier_version: NonEmptyString
 
 
+class SummaryAudience(ContractModel):
+    department: NonBlankString | None = None
+    role: NonBlankString | None = None
+
+    @model_validator(mode="after")
+    def require_audience(self) -> Self:
+        if self.department is None and self.role is None:
+            raise ValueError("a summary audience requires a department or role")
+        return self
+
+
+class SummaryRequest(SummaryAudience):
+    doc_id: NonBlankString
+    language: LanguageCode = Field(pattern=r"\S")
+    org_id: str | None = Field(default=None, pattern=r"^[A-Za-z0-9_-]+$")
+    assigned_obligations: list[Obligation] = Field(default_factory=list)
+
+
+class SummaryPoint(ContractModel):
+    text: NonBlankString
+    citations: list[Citation] = Field(min_length=1)
+    obligation_id: NonEmptyString | None = None
+    due_date: date | None = None
+
+
+class Summary(ContractModel):
+    doc_id: NonBlankString
+    audience: SummaryAudience
+    language: LanguageCode = Field(pattern=r"\S")
+    points: list[SummaryPoint]
+    not_relevant: StrictBool
+    relevance_reason: str
+    generated_by: NonBlankString
+    verifier_version: NonBlankString
+
+    @model_validator(mode="after")
+    def check_relevance(self) -> Self:
+        if self.not_relevant and (self.points or not self.relevance_reason.strip()):
+            raise ValueError("a non-relevant summary requires a reason and no points")
+        return self
+
+
 class ExtractObligationsRequest(ContractModel):
     doc_id: NonEmptyString
+    org_id: str | None = Field(default=None, pattern=r"^[A-Za-z0-9_-]+$")
 
 
 class ExtractObligationsResponse(ContractModel):

@@ -31,7 +31,7 @@ class ExtractionService:
         self.store = store
         self.create_extractor = create_extractor
 
-    def extract(self, doc_id: str) -> ExtractionResult:
+    def extract(self, doc_id: str, *, org_id: str | None = None) -> ExtractionResult:
         try:
             identifier = UUID(doc_id)
         except ValueError as error:
@@ -41,10 +41,12 @@ class ExtractionService:
         # Read a consistent snapshot without holding the indexing lock during LLM calls.
         with self.storage.index_lock(doc_id):
             parsed = self.storage.load_result(doc_id)
+            if org_id is not None and parsed.org_id != org_id:
+                raise FileNotFoundError(doc_id)
             state = self.storage.load_index_cache(doc_id)
             if parsed.document.status != "ready" or not state or state.get("status") != "indexed":
                 raise IndexNotReady("Document must be indexed before extraction")
-            chunks = self.store.load_document_chunks(doc_id)
+            chunks = self.store.load_document_chunks(doc_id, org_id=parsed.org_id)
             if len(chunks) != state.get("chunk_count"):
                 raise IndexNotReady("Stored index is incomplete; re-index the document")
         org = load_org(parsed.org_id)

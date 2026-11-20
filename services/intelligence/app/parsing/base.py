@@ -7,7 +7,7 @@ from importlib import import_module
 from pathlib import Path
 from typing import Any
 
-from intellidocs_intelligence.models import Page, ParsedDocument, ParseResult
+from intellidocs_intelligence.models import DocumentStructure, Page, ParsedDocument, ParseResult
 
 
 class DocumentParser(ABC):
@@ -34,11 +34,12 @@ def result_for(
     *,
     sizes: dict[int, tuple[float, float]] | None = None,
     languages: Sequence[str] = (),
+    structure: DocumentStructure | None = None,
 ) -> ParseResult:
     if sizes is not None:
         from .structure import preserve_structure
 
-        pages = preserve_structure(pages, sizes, languages)
+        pages = preserve_structure(pages, sizes, languages, structure)
     return ParseResult(
         document=ParsedDocument(
             id=sha256(path.read_bytes()).hexdigest(),

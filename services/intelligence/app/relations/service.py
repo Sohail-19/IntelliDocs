@@ -58,7 +58,7 @@ class RelationService:
         self.max_pairs = max_pairs
         self.pairs_per_candidate = pairs_per_candidate
 
-    def detect(self, doc_id: str) -> RelationResult:
+    def detect(self, doc_id: str, *, org_id: str | None = None) -> RelationResult:
         try:
             if str(UUID(doc_id)) != doc_id:
                 raise ValueError("Document ID must be canonical")
@@ -66,6 +66,8 @@ class RelationService:
             raise FileNotFoundError(doc_id) from error
         with self.storage.index_lock(doc_id):
             parsed = self.storage.load_result(doc_id)
+            if org_id is not None and parsed.org_id != org_id:
+                raise FileNotFoundError(doc_id)
             state = self.storage.load_index_cache(doc_id)
             if parsed.document.status != "ready" or not state or state.get("status") != "indexed":
                 raise IndexNotReady("Document must be indexed before detecting relations")

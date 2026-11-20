@@ -17,6 +17,7 @@ import type {
   RelationListStatus,
   StaleDecision,
   StoredDocumentRelation,
+  SummaryPreview,
   UserChange,
 } from '../../../contracts/core-api.v1.js';
 
@@ -197,6 +198,21 @@ export function createClient(baseUrl: string, fetcher: typeof fetch = fetch) {
     async document(id: string) {
       return decode<'/api/documents/:id'>(
         await authorized('/api/documents/:id', 'GET', undefined, id),
+      );
+    },
+
+    async documentSummary(id: string, preview?: SummaryPreview) {
+      const query = new URLSearchParams();
+      if (preview?.department) query.set('department', preview.department);
+      if (preview?.role) query.set('role', preview.role);
+      return decode<'/api/documents/:id/summary'>(
+        await authorized(
+          '/api/documents/:id/summary',
+          'GET',
+          undefined,
+          id,
+          query.size ? query : undefined,
+        ),
       );
     },
 

@@ -290,7 +290,7 @@ it.each([
       return new Response(null, { status: 204 });
     },
   );
-  expect(await screen.findByText('Stale · manager decision required')).toBeVisible();
+  expect(await screen.findByText('Stale · review required')).toBeVisible();
   expect(screen.queryByRole('button', { name: 'Acknowledge' })).not.toBeInTheDocument();
   expect(screen.getByRole('link', { name: 'View relation' })).toHaveAttribute(
     'href',

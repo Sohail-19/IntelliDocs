@@ -11,7 +11,13 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 from zipfile import ZipFile
 
-from intellidocs_intelligence.models import Page, ParseResult, TableBlock, TextBlock
+from intellidocs_intelligence.models import (
+    DocumentStructure,
+    Page,
+    ParseResult,
+    TableBlock,
+    TextBlock,
+)
 
 from .base import DocumentParser, dependency, result_for
 
@@ -113,7 +119,11 @@ def email_content(path: Path) -> tuple[str, list[Attachment]]:
 
 
 def logical_result(
-    path: Path, lines: Sequence[str | list[list[str]] | TextBlock], languages: Sequence[str]
+    path: Path,
+    lines: Sequence[str | list[list[str]] | TextBlock],
+    languages: Sequence[str],
+    *,
+    structure: DocumentStructure | None = None,
 ) -> ParseResult:
     pages: list[Page] = []
     for start in range(0, max(1, len(lines)), 35):
@@ -137,6 +147,7 @@ def logical_result(
         ["Logical pages and coordinates; physical pagination is unavailable."],
         sizes={page.page: (612, 792) for page in pages},
         languages=languages,
+        structure=structure,
     )
 
 
@@ -145,6 +156,8 @@ def parse_non_email(
     languages: Sequence[str],
     parser: DocumentParser,
     max_bytes: int,
+    *,
+    structure: DocumentStructure | None = None,
 ) -> ParseResult:
     if path.suffix == ".pdf":
         return parser.parse(path, languages)
@@ -180,4 +193,4 @@ def parse_non_email(
                 )
             else:
                 lines.append(item.text)
-    return logical_result(path, lines, languages)
+    return logical_result(path, lines, languages, structure=structure)

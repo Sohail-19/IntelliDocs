@@ -1,6 +1,7 @@
 """Clause/section-aware chunk windows with whole-sentence overlap."""
 
 import re
+from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import date
 
@@ -10,42 +11,12 @@ from intellidocs_intelligence.models import Chunk, ParsedDocument
 from .canonical import BlockSpan, canonical_document
 from .config import ChunkingConfig
 
-# Conservative punctuation rules require no downloaded sentence models. Common
-# abbreviations/initials are kept intact; missing punctuation yields an oversized
-# indivisible unit rather than an arbitrary token cut.
-ABBREVIATIONS = {
-    "mr",
-    "mrs",
-    "ms",
-    "dr",
-    "prof",
-    "sr",
-    "jr",
-    "vs",
-    "etc",
-    "approx",
-    "dept",
-    "fig",
-    "inc",
-    "ltd",
-    "est",
-    "sec",
-    "vol",
-    "pp",
-    "para",
-    "art",
-    "no",
-    "nos",
-    "cf",
-    "e.g",
-    "i.e",
-    "al",
-}
 TERMINAL = re.compile(r"[.!?।॥。！？]+[\"'”’»）)\]]*(?=\s|$)")
 
 
-def sentence_spans(text: str) -> list[tuple[int, int]]:
+def sentence_spans(text: str, abbreviations: Sequence[str] = ()) -> list[tuple[int, int]]:
     """Return whole detected sentences (or trailing fragments), with raw offsets."""
+    recognized = {value.casefold().rstrip(".") for value in abbreviations}
     spans: list[tuple[int, int]] = []
     start = 0
     for match in TERMINAL.finditer(text):
@@ -53,7 +24,7 @@ def sentence_spans(text: str) -> list[tuple[int, int]]:
             prefix = text[start : match.start()]
             token = re.search(r"([\w.]+)$", prefix)
             previous = token[0] if token else ""
-            if previous.casefold() in ABBREVIATIONS or re.fullmatch(
+            if previous.casefold().lstrip(".") in recognized or re.fullmatch(
                 r"(?:[^\W\d_]\.)*[^\W\d_]",
                 previous,
             ):
@@ -144,6 +115,7 @@ class Chunker:
         department: str | None = None,
         doc_date: date | None = None,
         doc_type: str | None = None,
+        sentence_abbreviations: Sequence[str] = (),
     ) -> list[Chunk]:
         canonical = canonical_document(document)
         chunks: list[Chunk] = []
@@ -158,7 +130,7 @@ class Chunker:
             ):
                 windows = [(start, end)]
             else:
-                windows = self._windows(canonical.text, group.blocks)
+                windows = self._windows(canonical.text, group.blocks, sentence_abbreviations)
             for begin, finish in windows:
                 sources = [
                     span for span in group.blocks if span.start < finish and span.end > begin
@@ -186,10 +158,13 @@ class Chunker:
                 )
         return chunks
 
-    def _windows(self, text: str, blocks: list[BlockSpan]) -> list[tuple[int, int]]:
+    def _windows(
+        self, text: str, blocks: list[BlockSpan], abbreviations: Sequence[str]
+    ) -> list[tuple[int, int]]:
         origin, finish = blocks[0].start, blocks[-1].end
         units = [
-            (origin + start, origin + end) for start, end in sentence_spans(text[origin:finish])
+            (origin + start, origin + end)
+            for start, end in sentence_spans(text[origin:finish], abbreviations)
         ]
         paragraph_ends = {
             block.start + len(text[block.start : block.end].rstrip()) for block in blocks

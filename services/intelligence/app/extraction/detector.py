@@ -50,6 +50,7 @@ class _LanguageRules:
 
 class CandidateDetector:
     def __init__(self, org: OrgConfig) -> None:
+        self.abbreviations = org.document_structure.sentence_abbreviations
         self.languages = {language.casefold() for language in org.languages}
         self.rules: dict[str, _LanguageRules] = {}
         for language, rules in org.obligation_detection.items():
@@ -85,7 +86,7 @@ class CandidateDetector:
         for chunk in chunks:
             rules = self._rules_for(chunk.language)
             sentences = []
-            for start, end in sentence_spans(chunk.text):
+            for start, end in sentence_spans(chunk.text, self.abbreviations):
                 sentence = chunk.text[start:end]
                 normalized = _normalize(sentence)
                 if ISO_DATE.search(normalized) or any(rule.matches(normalized) for rule in rules):

@@ -1,0 +1,20 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "summary-profile.v1.schema.json",
+  "title": "SummaryProfile v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["focus_topics", "responsibilities", "glossary"],
+  "properties": {
+    "focus_topics": { "type": "array", "items": { "type": "string", "pattern": "\\S" } },
+    "responsibilities": { "type": "array", "items": { "type": "string", "pattern": "\\S" } },
+    "glossary": {
+      "type": "object",
+      "description": "For each configured language, map canonical terms to a list of aliases in that language.",
+      "additionalProperties": {
+        "type": "object",
+        "additionalProperties": { "type": "array", "items": { "type": "string", "pattern": "\\S" } }
+      }
+    }
+  }
+}

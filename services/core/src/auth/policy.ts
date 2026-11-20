@@ -16,6 +16,7 @@ export interface Principal {
   orgId: number;
   orgSlug: string;
   roles: string[];
+  department?: string | null;
 }
 
 export function orgPolicy(slug: string, config: OrgConfig): OrgPolicy | undefined {
