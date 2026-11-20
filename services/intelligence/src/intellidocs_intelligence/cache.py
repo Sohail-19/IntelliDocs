@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 import json
 from pathlib import Path
+from tempfile import NamedTemporaryFile
 from typing import Any
 
 from .llm import LLMProvider
@@ -18,9 +19,10 @@ class DiskCache:
 
     def get(self, key: str) -> dict[str, Any] | None:
         path = self.directory / f"{key}.json"
-        if not path.is_file():
+        try:
+            value = json.loads(path.read_text(encoding="utf-8"))
+        except FileNotFoundError:
             return None
-        value = json.loads(path.read_text(encoding="utf-8"))
         if not isinstance(value, dict):
             raise ValueError(f"Cached value at {path} is not an object")
         return value
@@ -28,7 +30,16 @@ class DiskCache:
     def set(self, key: str, value: dict[str, Any]) -> None:
         self.directory.mkdir(parents=True, exist_ok=True)
         path = self.directory / f"{key}.json"
-        path.write_text(json.dumps(value, sort_keys=True), encoding="utf-8")
+        with NamedTemporaryFile(
+            mode="w", dir=self.directory, encoding="utf-8", delete=False
+        ) as stream:
+            temp = Path(stream.name)
+            try:
+                json.dump(value, stream, sort_keys=True)
+                stream.close()
+                temp.replace(path)
+            finally:
+                temp.unlink(missing_ok=True)
 
 
 class CachedLLMProvider(LLMProvider):

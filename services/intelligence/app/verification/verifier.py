@@ -1,7 +1,6 @@
 """Fail-closed quote attribution and optional entailment checks for draft claims."""
 
 import json
-import os
 from collections.abc import Mapping, Sequence
 from pathlib import Path
 from string import Template
@@ -14,6 +13,7 @@ from app.generation import GeneratedClaim
 from intellidocs_intelligence.cache import CachedLLMProvider, DiskCache
 from intellidocs_intelligence.llm import LLMProvider, provider_from_env
 from intellidocs_intelligence.models import Answer, Chunk, Citation, Claim, ParsedDocument
+from intellidocs_intelligence.runtime import FeatureUnavailable, cache_directory
 
 from .config import VerificationConfig
 from .matching import match_quote
@@ -94,6 +94,8 @@ class CitationVerifier:
             )
             response = self.provider.generate(prompt, schema)
             return SupportVerdict.model_validate(response).verdict == "supported"
+        except FeatureUnavailable:
+            raise
         except Exception:
             # Provider, cache, JSON, and schema failures must never approve a claim.
             return False
@@ -173,7 +175,6 @@ def verifier_from_env() -> CitationVerifier:
     config = VerificationConfig.from_env()
     provider = None
     if config.support_check:
-        storage = Path(os.environ.get("STORAGE_DIR", "data/uploads"))
-        cache = DiskCache(Path(os.environ.get("LLM_CACHE_DIR") or storage / "llm-cache"))
+        cache = DiskCache(cache_directory())
         provider = CachedLLMProvider(provider_from_env(), cache)
     return CitationVerifier(config, provider)

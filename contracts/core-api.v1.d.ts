@@ -26,7 +26,7 @@ export interface AuthCredentials {
 }
 
 export interface RefreshCredentials {
-  refresh_token: string;
+  refresh_token?: string;
 }
 
 export interface AuthTokens extends RefreshCredentials {
@@ -115,6 +115,9 @@ export interface DocumentObligations {
 
 export interface DocumentUploadReceipt {
   document_id: string;
+  index_error?: string;
+  extraction_error?: string;
+  relation_error?: string;
   index_failed_document_ids?: string[];
   extraction_failed_document_ids?: string[];
   relation_failed_document_ids?: string[];

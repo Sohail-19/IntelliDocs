@@ -8,6 +8,8 @@ from abc import ABC, abstractmethod
 from typing import Any
 from urllib.request import Request, urlopen
 
+from .runtime import Runtime, actor_id, llm_quota, require_llm
+
 
 class LLMProvider(ABC):
     """An LLM capable of returning an object constrained by a JSON Schema."""
@@ -105,24 +107,39 @@ def _as_object(value: Any) -> dict[str, Any]:
 def provider_from_env(env: dict[str, str] | None = None) -> LLMProvider:
     """Create the configured provider without leaking provider choice to callers."""
     settings = os.environ if env is None else env
+    runtime = Runtime.from_env(settings)
+    require_llm(runtime)
     provider = settings.get("LLM_PROVIDER", "fake")
     model = settings.get("LLM_MODEL", "test-model")
     api_key = settings.get("LLM_API_KEY", "")
 
+    instance: LLMProvider
     if provider == "fake":
         instance = FakeProvider(model=model)
         instance.provider_id = provider
-        return instance
-    if provider == "gemini":
-        return GeminiProvider(provider, model, _required(api_key, "LLM_API_KEY"))
-    if provider == "openai_compatible":
-        return OpenAICompatibleProvider(
+    elif provider == "gemini":
+        instance = GeminiProvider(provider, model, _required(api_key, "LLM_API_KEY"))
+    elif provider == "openai_compatible":
+        instance = OpenAICompatibleProvider(
             provider,
             model,
             _required(api_key, "LLM_API_KEY"),
             _required(settings.get("LLM_BASE_URL", ""), "LLM_BASE_URL"),
         )
-    raise ValueError(f"Unsupported LLM_PROVIDER: {provider}")
+    else:
+        raise ValueError("Unsupported LLM_PROVIDER")
+    return MeteredProvider(instance, runtime) if runtime.demo else instance
+
+
+class MeteredProvider(LLMProvider):
+    def __init__(self, delegate: LLMProvider, runtime: Runtime) -> None:
+        self.delegate, self.runtime = delegate, runtime
+        self.provider_id, self.model = delegate.provider_id, delegate.model
+
+    def generate(self, prompt: str, schema: dict[str, Any]) -> dict[str, Any]:
+        require_llm(self.runtime)
+        llm_quota(self.runtime.root).reserve(self.runtime, actor_id.get())
+        return self.delegate.generate(prompt, schema)
 
 
 def _required(value: str, name: str) -> str:

@@ -1,9 +1,10 @@
 import { json, Router } from 'express';
-import type { Request, RequestHandler, Response } from 'express';
+import type { CookieOptions, Request, RequestHandler, Response } from 'express';
 import { rateLimit } from 'express-rate-limit';
-import type { UserChange } from '../../../../contracts/core-api.v1.js';
+import type { AuthTokens, UserChange } from '../../../../contracts/core-api.v1.js';
 
 import { auditContext, auditRequest } from '../audit.js';
+import { requestContext } from '../runtime.js';
 import type { Permission, Principal } from './policy.js';
 import { AuthError } from './service.js';
 import type { AuthService, Credentials, Registration } from './service.js';
@@ -23,6 +24,8 @@ function authorized(auth: AuthService, check: (user: Principal) => boolean): Req
       .then((user) => {
         if (!check(user)) throw new AuthError(403, 'Access denied');
         response.locals.principal = user;
+        const context = requestContext.getStore();
+        if (context) context.actor = user.id;
         response.set('Cache-Control', 'private, no-store');
         next();
       })
@@ -56,8 +59,24 @@ function bodyOf(request: Request): Record<string, unknown> {
   return body as Record<string, unknown>;
 }
 
-function refreshToken(request: Request): string {
-  const token = bodyOf(request).refresh_token;
+const refreshCookie = '__Host-intellidocs-refresh';
+const cookieOptions: CookieOptions = {
+  secure: true,
+  httpOnly: true,
+  sameSite: 'strict',
+  path: '/',
+};
+
+function refreshToken(request: Request, production: boolean): string {
+  if (production && !request.get('Origin')) throw new AuthError(403, 'Origin is required');
+  const token = production
+    ? request
+        .get('Cookie')
+        ?.split(';')
+        .map((item) => item.trim())
+        .find((item) => item.startsWith(`${refreshCookie}=`))
+        ?.slice(refreshCookie.length + 1)
+    : bodyOf(request).refresh_token;
   if (typeof token !== 'string' || !/^[A-Za-z0-9_-]{43}$/.test(token)) {
     throw new AuthError(401, 'Invalid refresh token');
   }
@@ -174,8 +193,21 @@ export function userRouter(auth: AuthService, guard: Guard): Router {
   return router;
 }
 
-export function authRouter(auth: AuthService): Router {
+export function authRouter(auth: AuthService, production = false): Router {
   const router = Router();
+  const sendTokens = (response: Response, tokens: AuthTokens & { refresh_token: string }) => {
+    if (!production) {
+      response.json(tokens);
+      return;
+    }
+    const { refresh_token, ...payload } = tokens;
+    response
+      .cookie(refreshCookie, refresh_token, {
+        ...cookieOptions,
+        maxAge: auth.settings.refreshSeconds * 1000,
+      })
+      .json(payload);
+  };
   router.use(
     (_request, response, next) => {
       response.set('Cache-Control', 'no-store');
@@ -186,9 +218,11 @@ export function authRouter(auth: AuthService): Router {
       limit: auth.settings.rateLimit,
       standardHeaders: 'draft-8',
       legacyHeaders: false,
+      // Proxy trust is explicitly configured by the operator, outside visitor control.
+      validate: { xForwardedForHeader: false, forwardedHeader: false },
       message: { error: 'Too many authentication requests' },
     }),
-    json({ limit: '8kb' }),
+    json({ limit: '8kb', inflate: false }),
   );
   // Registration checks bootstrap eligibility or users:register for the requested organization.
   router.post(
@@ -208,7 +242,8 @@ export function authRouter(auth: AuthService): Router {
   router.post(
     '/login',
     handle(async (request, response) => {
-      response.json(
+      sendTokens(
+        response,
         await auth.login(credentials(bodyOf(request)), auditRequest(request, response)),
       );
     }),
@@ -216,7 +251,10 @@ export function authRouter(auth: AuthService): Router {
   router.post(
     '/refresh',
     handle(async (request, response) => {
-      response.json(await auth.refresh(refreshToken(request), auditRequest(request, response)));
+      sendTokens(
+        response,
+        await auth.refresh(refreshToken(request, production), auditRequest(request, response)),
+      );
     }),
   );
   router.get(
@@ -229,7 +267,8 @@ export function authRouter(auth: AuthService): Router {
   router.post(
     '/logout',
     handle(async (request, response) => {
-      await auth.logout(refreshToken(request), auditRequest(request, response));
+      await auth.logout(refreshToken(request, production), auditRequest(request, response));
+      if (production) response.clearCookie(refreshCookie, cookieOptions);
       response.sendStatus(204);
     }),
   );

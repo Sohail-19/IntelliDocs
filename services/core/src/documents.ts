@@ -33,7 +33,10 @@ type DocumentRow = Omit<DocumentRecord, 'created_at' | 'indexed_at'> & {
 };
 
 export class PostgresDocumentRepository implements DocumentRepository, DocumentReader {
-  constructor(private readonly pool: Pool) {}
+  constructor(
+    private readonly pool: Pool,
+    private readonly demo = false,
+  ) {}
 
   async save(response: IngestResponse, audit: AuditContext): Promise<void> {
     await inTransaction(this.pool, async (connection) => {
@@ -65,6 +68,8 @@ export class PostgresDocumentRepository implements DocumentRepository, DocumentR
         );
         const id = rows.rows[0]?.id;
         if (id === undefined) throw new Error('Document insert returned no ID');
+        if (this.demo)
+          await connection.query('UPDATE documents SET demo_upload=true WHERE id=$1', [id]);
         await writeAudit(connection, audit, {
           action: 'document.upload',
           entityType: 'document',

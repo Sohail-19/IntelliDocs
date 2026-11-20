@@ -13,6 +13,7 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "generate:openapi": "openapi-typescript ../../contracts/openapi/intelligence.v1.yaml -o ../../contracts/intelligence.openapi.v1.d.ts",
+    "seed:demo": "node dist/seed-demo.js",
     "migrate:up": "node-pg-migrate up --tsx --migrations-dir migrations --migration-file-language ts",
     "migrate:down": "node-pg-migrate down --tsx --migrations-dir migrations --migration-file-language ts"
   },

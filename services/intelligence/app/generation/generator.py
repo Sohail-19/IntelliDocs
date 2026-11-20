@@ -11,6 +11,7 @@ from typing import Any
 from intellidocs_intelligence.cache import CachedLLMProvider, DiskCache
 from intellidocs_intelligence.llm import LLMProvider, provider_from_env
 from intellidocs_intelligence.models import Chunk
+from intellidocs_intelligence.runtime import cache_directory
 
 from .models import GenerationResult
 
@@ -106,8 +107,6 @@ class ClaimGenerator:
 
 
 def generator_from_env() -> ClaimGenerator:
-    storage_dir = Path(os.environ.get("STORAGE_DIR", "data/uploads"))
-    cache_dir = Path(os.environ.get("LLM_CACHE_DIR") or storage_dir / "llm-cache")
     return ClaimGenerator(
-        provider_from_env(), GenerationConfig.from_env(), cache=DiskCache(cache_dir)
+        provider_from_env(), GenerationConfig.from_env(), cache=DiskCache(cache_directory())
     )

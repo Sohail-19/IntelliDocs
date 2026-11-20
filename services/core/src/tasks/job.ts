@@ -7,6 +7,7 @@ import { normalizedDeadline, resolvedDeadline } from '../obligation-values.js';
 import { hasPendingStaleness, pendingStale } from '../relations/staleness.js';
 import { changeAssignment } from '../routing/assignments.js';
 import type { Assignment } from '../routing/assignments.js';
+import { logEvent } from '../runtime.js';
 import { lockTask, recordTaskTransition } from './repository.js';
 import { taskTransition } from './workflow.js';
 
@@ -111,7 +112,7 @@ export function scheduleTaskJob(job: TaskJob, intervalMs: number): () => void {
     try {
       await job.run();
     } catch {
-      console.error('Task workflow sweep failed');
+      logEvent('task_sweep_failed');
     }
     if (!stopped) timer = setTimeout(() => void tick(), intervalMs).unref();
   }

@@ -1,0 +1,50 @@
+services:
+  - type: web
+    name: intellidocs-intelligence
+    runtime: docker
+    plan: free
+    dockerContext: .
+    dockerfilePath: ./services/intelligence/Dockerfile
+    autoDeployTrigger: "off"
+    healthCheckPath: /health
+    envVars:
+      - key: INTELLIDOCS_ENV
+        value: production
+      - key: DEMO_MODE
+        value: "true"
+      - key: LLM_ENABLED
+        value: "false"
+      - key: INTELLIDOCS_INTERNAL_KEY
+        sync: false
+      - key: QDRANT_URL
+        sync: false
+      - key: QDRANT_API_KEY
+        sync: false
+      - key: QDRANT_COLLECTION
+        value: intellidocs_demo_bm25_v1
+      - key: EMBEDDING_LIGHTWEIGHT
+        value: "false"
+      - key: EMBEDDING_BACKEND
+        value: fake
+      - key: SPARSE_EMBEDDING_BACKEND
+        value: bm25
+      - key: RETRIEVAL_MODE
+        value: sparse
+      - key: RERANKER_BACKEND
+        value: none
+      - key: EMBEDDING_BATCH_SIZE
+        value: "8"
+      - key: TESSERACT_LANGUAGES
+        value: eng,hin,spa,fra
+      - key: OMP_THREAD_LIMIT
+        value: "1"
+      - key: OPENBLAS_NUM_THREADS
+        value: "1"
+      - key: MAX_UPLOAD_BYTES
+        value: "1048576"
+      - key: MAX_UPLOAD_PAGES
+        value: "4"
+      - key: DEMO_RETENTION_DAYS
+        value: "7"
+      - key: DEMO_SWEEP_INTERVAL_SECONDS
+        value: "3600"

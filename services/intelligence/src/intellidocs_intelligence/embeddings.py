@@ -16,7 +16,10 @@ from typing import Any
 
 from typing_extensions import TypedDict
 
+from .runtime import flag
 from .sparse import Bm25Encoder
+
+LIGHTWEIGHT_MODEL = "intfloat/multilingual-e5-small"
 
 
 def embedding_settings_key() -> tuple[str | None, ...]:
@@ -24,6 +27,8 @@ def embedding_settings_key() -> tuple[str | None, ...]:
     return tuple(
         os.environ.get(name)
         for name in (
+            "EMBEDDING_LIGHTWEIGHT",
+            "EMBEDDING_LIGHTWEIGHT_MODEL",
             "EMBEDDING_BACKEND",
             "EMBEDDING_MODEL",
             "EMBEDDING_DEVICE",
@@ -266,7 +271,7 @@ class SentenceTransformerEmbedder(Embedder):
                     except (OSError, ValueError) as error:
                         raise RuntimeError(
                             "Embedding weights are not available locally; "
-                            "provision EMBEDDING_MODEL before runtime (downloads are disabled)"
+                            "provision the configured model before runtime (downloads are disabled)"
                         ) from error
 
     def embed(self, texts: Sequence[str]) -> list[Embedding]:
@@ -346,8 +351,16 @@ class SparseOverrideEmbedder(Embedder):
 
 def embedder_from_env() -> Embedder:
     backend = os.environ.get("EMBEDDING_BACKEND", "fake")
-    if backend == "fake":
-        embedder: Embedder = FakeEmbedder()
+    embedder: Embedder
+    if flag(os.environ, "EMBEDDING_LIGHTWEIGHT", False):
+        embedder = SentenceTransformerEmbedder(
+            os.environ.get("EMBEDDING_LIGHTWEIGHT_MODEL") or LIGHTWEIGHT_MODEL,
+            os.environ.get("EMBEDDING_DEVICE", "cpu"),
+            os.environ.get("EMBEDDING_DOCUMENT_PROMPT") or "passage: ",
+            os.environ.get("EMBEDDING_QUERY_PROMPT") or "query: ",
+        )
+    elif backend == "fake":
+        embedder = FakeEmbedder()
     elif backend == "bge_m3":
         embedder = BgeM3Embedder()
     elif backend == "sentence_transformers":

@@ -6,7 +6,7 @@ import { Router } from 'express';
 
 import { principal } from './auth/routes.js';
 import type { Guard } from './auth/routes.js';
-import { IntelligenceError } from './intelligence/client.js';
+import { IntelligenceError, llmProblem } from './intelligence/client.js';
 import type { Answer, AnswerRequest, IntelligenceClient } from './intelligence/client.js';
 import { authorityWarnings } from './relations/staleness.js';
 import type { PostgresRelationRepository } from './relations/repository.js';
@@ -102,6 +102,11 @@ export function answerRouter(
           authority_warnings: warnings,
         });
       } catch (error) {
+        const problem = llmProblem(error);
+        if (problem) {
+          response.status(problem.status).json({ error: problem.message });
+          return;
+        }
         if (error instanceof IntelligenceError && error.status === 422) {
           response.status(422).json({ error: 'Intelligence rejected the answer query or filters' });
           return;

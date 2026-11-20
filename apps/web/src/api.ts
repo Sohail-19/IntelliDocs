@@ -105,7 +105,7 @@ export function createClient(baseUrl: string, fetcher: typeof fetch = fetch) {
     return fetcher(baseUrl.replace(/\/+$/, '') + endpoint + (query ? '?' + query.toString() : ''), {
       method,
       headers,
-      credentials: 'omit',
+      credentials: path.startsWith('/api/auth/') && path !== '/api/auth/me' ? 'include' : 'omit',
       ...(body === undefined
         ? {}
         : { body: body instanceof FormData ? body : JSON.stringify(body) }),
@@ -125,9 +125,12 @@ export function createClient(baseUrl: string, fetcher: typeof fetch = fetch) {
     if (session.tokens.access_token !== rejectedToken) return;
     session.refresh ??= (async () => {
       try {
-        const response = await send('/api/auth/refresh', 'POST', {
-          refresh_token: session.tokens.refresh_token,
-        });
+        const { refresh_token } = session.tokens;
+        const response = await send(
+          '/api/auth/refresh',
+          'POST',
+          refresh_token ? { refresh_token } : {},
+        );
         session.tokens = await decode<'/api/auth/refresh'>(response);
       } catch (error) {
         if (current === session && error instanceof ApiError && error.status === 401) {
@@ -410,9 +413,12 @@ export function createClient(baseUrl: string, fetcher: typeof fetch = fetch) {
       if (!session) return;
       // If logout races rotation, revoke the replacement instead of the already-used token.
       await session.refresh?.catch(() => undefined);
-      const response = await send('/api/auth/logout', 'POST', {
-        refresh_token: session.tokens.refresh_token,
-      });
+      const { refresh_token } = session.tokens;
+      const response = await send(
+        '/api/auth/logout',
+        'POST',
+        refresh_token ? { refresh_token } : {},
+      );
       if (!response.ok) await fail(response);
     },
   };

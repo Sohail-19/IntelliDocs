@@ -2,10 +2,8 @@
 
 import hashlib
 import json
-import os
 from collections.abc import Callable, Iterator, Sequence
 from contextlib import contextmanager
-from pathlib import Path
 
 import portalocker
 
@@ -34,6 +32,7 @@ from intellidocs_intelligence.models import (
     SummaryProfile,
     SummaryRequest,
 )
+from intellidocs_intelligence.runtime import cache_directory
 
 from .evidence import obligation_points, select_chunks
 from .generator import SummaryGenerator
@@ -219,8 +218,7 @@ class SummaryService:
 
 @contextmanager
 def summarizer_from_env(storage: Storage) -> Iterator[SummaryService]:
-    storage_dir = Path(os.environ.get("STORAGE_DIR", "data/uploads"))
-    cache_dir = Path(os.environ.get("LLM_CACHE_DIR") or storage_dir / "llm-cache")
+    cache_dir = cache_directory()
     store = QdrantStore.from_env(configured_embedder())
     try:
         yield SummaryService(

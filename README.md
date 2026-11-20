@@ -1,200 +1,69 @@
 # IntelliDocs
 
-IntelliDocs is a domain-agnostic document-intelligence platform. The Python
-intelligence service owns OCR-adjacent document understanding, retrieval, and
-grounded extraction interfaces; the Node core service owns platform
-orchestration and persistence. They communicate only through the versioned
-schemas and OpenAPI contract in [`contracts/`](contracts/).
+IntelliDocs turns circulars, policies, contracts, and other operational documents into searchable evidence and accountable work. It parses multilingual documents, answers questions with citations to the original passages, and gives each department or role a focused summary. It extracts duties and deadlines into a task feed with owners, review queues, and an audit trail. When a manager confirms that a newer document supersedes, withdraws, or amends an earlier one, affected tasks are flagged so people can review them before acting.
 
-## Run with Docker
+The same application supports different organizations through YAML configuration. The bundled examples cover a legal and finance office in English and Hindi and a water utility in Spanish and French.
 
-Copy the environment template and fill in local values, including distinct
-`AUTH_JWT_SECRET` and `AUTH_BOOTSTRAP_TOKEN` secrets. Start Postgres and apply
-the core migrations before starting the full stack:
+## Architecture
 
-```sh
-cp .env.example .env
-docker compose up -d postgres
-npm ci --prefix services/core
-DATABASE_URL='postgresql://USER:PASSWORD@localhost:5432/DB' npm --prefix services/core run migrate:up
-docker compose up --build
+```mermaid
+flowchart LR
+    Web["Web · React"] -->|"Authenticated API"| Core["Core · Express"]
+    Core -->|"v1 HTTP contracts"| Intelligence["Intelligence · FastAPI"]
+    Core --> PG[("Postgres · workflow and audit")]
+    Intelligence --> Files[("Storage · originals and parsed results")]
+    Intelligence --> Qdrant[("Qdrant · dense and sparse search")]
+    Intelligence -.-> Models["Optional model provider"]
+    Config["Organization YAML"] --> Core
+    Config --> Intelligence
 ```
 
-The services expose health endpoints at:
+Core owns identity, permissions, workflow, and audit. Intelligence owns document processing and evidence. The web app calls Core. See [the upload-to-task flow and tenant boundary](docs/architecture.md).
 
-```sh
-curl http://localhost:8000/health
-curl http://localhost:3000/health
-```
+## Feature-to-code map
 
-Stop the stack with `docker compose down`.
-
-Open the [web app](http://localhost:5173) to sign in to the workspace. The
-web build uses `VITE_API_URL`, and core's `CORE_CORS_ORIGINS` must include
-the web origin. See the [web README](apps/web/README.md) for local Vite
-development.
-
-Register the first administrator and log in through core to get an access
-token. See [core authentication](services/core/README.md#authentication).
-Supply the token when uploading:
-
-```sh
-curl --fail -H "Authorization: Bearer $ACCESS_TOKEN" -F file=@document.pdf http://localhost:3000/v1/upload
-```
-
-Intelligence, Qdrant, and Postgres bind to loopback for local debugging. Core
-is the authenticated client-facing service.
-`MAX_UPLOAD_BYTES` controls the size limit; `STORAGE_DIR` names its container-local
-storage path, backed by the `intelligence_uploads` volume. Organization selection
-uses `org_id` or `DEFAULT_ORG_ID`, and reads engines/languages from `ORG_CONFIG_DIR`.
-
-Core uploads also index the document and its attachments, recording `parsed`,
-`indexed`, or `failed` on each Postgres document row. Intelligence uploads index
-only when `-F index=true` is supplied. Both accept optional `department`,
-`doc_type`, and `doc_date` (YYYY-MM-DD); missing values come only from explicit
-`upload_defaults` in the org config. Configure `CHUNK_TARGET_TOKENS`,
-`CHUNK_OVERLAP_TOKENS`, `CHUNK_TOKEN_COUNT_METHOD`, `EMBEDDING_BATCH_SIZE`, and the
-embedding backend in `.env`. Re-indexing an unchanged document reuses persisted
-embeddings. The default fake embedder supports local checks; semantic vectors
-require the optional BGE-M3 extra and model files provisioned before runtime.
-
-## Core API
-
-Core is the authenticated API for clients. Endpoint behavior and payloads are
-covered in the [core service README](services/core/README.md).
-
-| Endpoint | Required permission or credential |
+| Feature | Start here |
 | --- | --- |
-| `GET /health` | Public |
-| `POST /api/auth/register` | Bootstrap token for the first account, then `users:register` |
-| `POST /api/auth/login` | Organization, email, and password |
-| `POST /api/auth/refresh` | Current refresh token |
-| `GET /api/auth/me` | Valid access token |
-| `POST /api/auth/logout` | Current refresh token |
-| `GET /api/users` | `users:roles` |
-| `PATCH /api/users/:id` | `users:roles` |
-| `PUT /api/users/:id/roles` | `users:roles` |
-| `GET /api/organisation` | `org:read` |
-| `POST /v1/upload` | `documents:upload` |
-| `GET /api/documents` | `documents:upload` |
-| `GET /api/documents/upload-options` | `documents:upload` |
-| `GET /api/documents/:id` | `documents:upload`, `documents:search`, or `documents:answer` |
-| `GET /api/documents/:id/summary` | Document access, plus `documents:summary-preview` for audience overrides |
-| `POST /api/documents/:id/index` | `documents:upload` |
-| `GET /api/search` | `documents:search` |
-| `GET /api/search/options` | `documents:search` or `documents:answer` |
-| `GET /api/documents/:id/source` | Document access, visible task, or review access |
-| `GET /api/answer` | `documents:answer` |
-| `GET /api/obligations` | `obligations:read` |
-| `GET /api/documents/:id/obligations` | `obligations:read` |
-| `POST /api/documents/:id/obligations` | `obligations:extract` |
-| `PATCH /api/documents/:id/obligations/:obligation_id/status` | `obligations:status` |
-| `PATCH /api/documents/:id/obligations/:obligation_id/assignment` | `obligations:assign` |
-| `POST /api/documents/:id/obligations/:obligation_id/route` | `obligations:assign` |
-| `GET /api/obligations/review` | `obligations:review` |
-| `GET /api/obligations/review/options` | `obligations:review` |
-| `PATCH /api/documents/:id/obligations/:obligation_id/review` | `obligations:review` |
-| `POST /api/documents/:id/obligations/:obligation_id/review/approve` | `obligations:review` |
-| `POST /api/documents/:id/obligations/:obligation_id/review/reject` | `obligations:review` |
-| `GET /api/tasks` | `tasks:read` |
-| `PATCH /api/tasks/:id/status` | `tasks:transition` and access to the active assignment |
-| `GET /api/audit` | `audit:read` |
-| `GET /api/relations`, `GET /api/relations/:id` | `relations:review` |
-| `POST /api/relations/:id/confirm`, `POST /api/relations/:id/dismiss` | `relations:review` |
-| `PATCH /api/relations/:id/type` | `relations:review` |
-| `GET /api/relations/:id/stale-obligations`, `PATCH /api/relations/:id/stale-obligations/:obligation_id` | `relations:review` |
+| Upload, OCR, page structure, and document type suggestions | [Core upload](services/core/src/upload.ts), [ingestion](services/intelligence/app/ingestion.py), [parsers](services/intelligence/app/parsing/), [classification](services/intelligence/app/classification/) |
+| Chunking, indexing, and hybrid search | [Chunking](services/intelligence/app/chunking/), [indexing](services/intelligence/app/indexing.py), [retrieval](services/intelligence/app/retrieval/) |
+| Grounded answers, role-aware summaries, and source viewing | [Generation](services/intelligence/app/generation/), [verification](services/intelligence/app/verification/), [summarization](services/intelligence/app/summarization/), [citation panel](apps/web/src/search/citation-panel.tsx) |
+| Obligation extraction, review, and task routing | [Extraction](services/intelligence/app/extraction/), [manager review](services/core/src/review/), [routing](services/core/src/routing/), [tasks](services/core/src/tasks/) |
+| Amendments, supersession, and stale tasks | [Relation detection](services/intelligence/app/relations/), [relation review and staleness](services/core/src/relations/) |
+| Auth, permissions, and audit | [Core auth](services/core/src/auth/), [audit](services/core/src/audit.ts), [oversight UI](apps/web/src/oversight/) |
+| Organization setup, API contracts, and evaluation | [Org examples](config/orgs/), [contracts](contracts/), [evaluation runner](eval/run_all.py) |
 
-## Roles and permissions
+## Quick start
 
-Grants come from `access.role_permissions` in each org config. These are the
-grants in the bundled example org.
-
-| Permissions | Roles |
-| --- | --- |
-| `documents:search`, `documents:answer`, `obligations:read`, `tasks:read` | `admin`, `manager`, `officer`, `finance_officer`, `viewer` |
-| `documents:summary-preview` | `admin`, `manager` |
-| `documents:upload`, `tasks:transition` | `admin`, `manager`, `officer`, `finance_officer` |
-| `audit:read`, `org:read`, `obligations:extract`, `obligations:status`, `obligations:assign`, `obligations:review`, `relations:review` | `admin`, `manager` |
-| `users:register`, `users:roles` | `admin` |
-
-## Intelligence API
-
-| Endpoint | Purpose |
-| --- | --- |
-| `GET /health` | Check service health |
-| `POST /v1/ingest` | Parse an uploaded file and optionally index it |
-| `POST /v1/index` | Index an already parsed document |
-| `GET /v1/documents/{doc_id}/source` | Return the original PDF for the given organization |
-| `POST /v1/search` | Retrieve cited document chunks |
-| `POST /v1/answer` | Generate and verify a grounded answer |
-| `POST /v1/summarize` | Generate a verified summary for a document audience |
-| `POST /v1/extract-obligations` | Extract, verify, and resolve obligations |
-| `POST /v1/detect-relations` | Propose relations with evidence from both documents |
-
-The [intelligence OpenAPI contract](contracts/openapi/intelligence.v1.yaml)
-defines requests and responses.
-
-## Run the browser demo
-
-Use Node 20.19 or later, Docker with Compose v2.24.4 or later, and OpenSSL.
-From the repository root, run:
+Install Docker with Compose v2.24.4 or newer and Python 3.11 or newer. Run this from the repository root.
 
 ```sh
-npm ci --prefix services/core
-npm ci --prefix e2e
-(cd e2e && npx playwright install --only-shell chromium)
-bash e2e/run-compose.sh
+bash scripts/demo.sh
 ```
 
-On Linux, add `--with-deps` to the Chromium install command if system
-dependencies are missing. The script creates its own Compose project and
-database, applies migrations, and supplies an in-network mock LLM plus fake
-embeddings. It registers a temporary admin, uploads a synthetic PDF, verifies
-the highlighted citation in Search, completes the routed task, and checks the
-audit trail. It then uploads an original circular and an amendment, confirms
-the relation, follows the link to the newer document, and sees the original
-task in the stale queue. It removes its containers and volumes on exit. The separate
-**Docker demo** workflow runs the same check and saves screenshots on failure.
+The script creates an isolated Compose project, applies migrations, and loads synthetic pilot documents and accounts for both organizations. Open the printed **Web login** URL and use the printed operator credentials, including the organization slug. Open **Documents** to inspect a pilot document or **Search** to try a citation. The local demo uses fixture model responses and deterministic embeddings.
 
-The demo uses loopback ports 55173 (web), 53000 (core), 58000 (intelligence),
-55432 (Postgres), and 56333 (Qdrant). Set the corresponding `DEMO_WEB_PORT`,
-`DEMO_CORE_PORT`, `DEMO_INTELLIGENCE_PORT`, `DEMO_POSTGRES_PORT`, or
-`DEMO_QDRANT_PORT` if a port is in use.
+Use the printed `bash scripts/demo.sh down …` command to remove the pilot containers and volumes. The ignored pilot directory contains the local files and credentials. See [the timing pilot](eval/timing/README.md) for its generated files and [the deployment guide](docs/deploy.md) for a hosted setup.
 
-## Screenshot placeholders
+### Demo credentials policy
 
-| Screen | Planned screenshot |
-| --- | --- |
-| Search | Original PDF with a highlighted citation |
-| Task feed | A routed obligation and its available status actions |
-| Audit trail | Filtered task transition with before and after values |
-| Users and roles | Configured department and role controls |
-| Organisation | Loaded languages and routing rules |
+Each local demo generates its own credentials. Treat the printed values and `data/demo/*/access.json` as private. Keep logins, bootstrap and signing secrets, provider keys, and `.env` out of Git, screenshots, and shared logs. For a hosted demo, supply passwords via environment settings and seed least-privilege accounts using the [public demo guide](docs/public-demo.md#seed-demo-accounts).
 
-## Run checks locally
+## Screenshots
 
-Contracts require only the Python standard library:
+These placeholders describe the states to capture using synthetic documents and accounts.
 
-```sh
-python3 scripts/validate_contracts.py
-```
+- [Search and cited source](screenshots/search.md)
+- [Task feed and status actions](screenshots/tasks.md)
+- [Audit trail with a before-and-after diff](screenshots/audit.md)
+- [Users and roles](screenshots/users.md)
+- [Organization configuration](screenshots/organisation.md)
 
-For the intelligence service (Python 3.11 and uv):
+## Limitations
 
-```sh
-cd services/intelligence
-uv sync --all-groups
-uv run ruff check .
-uv run mypy
-uv run pytest
-```
+- The [combined evaluation](docs/evaluation.md) exercises OCR and retrieval on small synthetic sets, replays answer drafts, and scores saved extraction, relation, and summary outputs. It provides regression evidence for the pipeline and scorer. Production model accuracy, broad multilingual quality, and performance on representative organizational collections remain unmeasured.
+- The CUAD and SROIE subset runs cover English contract spans and receipt fields. The CUAD labels only cover selected clauses. SROIE has no obligation labels. These runs leave owner and deadline accuracy on real documents, cross-lingual quality at scale, and FUNSD performance open.
+- Citation checks establish traceability to a source span. The optional claim-support check addresses whether the passage supports the claim. A confirmed relation can flag stale work for review. Legal or policy interpretation still requires a qualified reviewer.
+- The timing pilot has fixture-backed API measurements and awaits stopwatch measurements from people. There is no measured manual-to-system speedup.
+- The hosted free profiles disable LLM features. Their temporary disks can lose uploaded originals across restarts. See the [deployment guide](docs/deploy.md).
 
-For the core service (Node 20):
-
-```sh
-cd services/core
-npm ci
-npm run lint
-npm run typecheck
-npm test
-```
+For development checks and the browser integration flow, see [Contributing](CONTRIBUTING.md). The [Core API and permissions](services/core/README.md#api-reference), [Intelligence OpenAPI](contracts/openapi/intelligence.v1.yaml), and [web README](apps/web/README.md) cover component-level details.

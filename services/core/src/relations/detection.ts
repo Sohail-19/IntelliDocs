@@ -5,6 +5,7 @@ import addFormats from 'ajv-formats';
 
 import type { AuditContext } from '../audit.js';
 import type { IntelligenceClient, RelationResult } from '../intelligence/client.js';
+import { llmProblem } from '../intelligence/client.js';
 import type { PostgresRelationRepository } from './repository.js';
 
 const ajv = new Ajv2020({ strict: true });
@@ -48,7 +49,7 @@ export function runDetection(
       }
       await repository.store(result, audit);
     } catch (error) {
-      await repository.recordFailure(id, audit);
+      if (!llmProblem(error)) await repository.recordFailure(id, audit);
       throw error;
     }
   };
