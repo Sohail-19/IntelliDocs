@@ -63,7 +63,7 @@ export function logEvent(
     | 'demo_cleanup_failed'
     | 'task_sweep_failed'
     | 'database_pool_error',
-  fields: { request_id?: string; method?: string; status?: number } = {},
+  fields: { request_id?: string; method?: string; status?: number; reason?: string } = {},
 ): void {
   console.log(JSON.stringify({ service: 'core', event, ...fields }));
 }

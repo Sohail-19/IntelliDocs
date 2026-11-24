@@ -335,29 +335,59 @@ describe('core auth', () => {
     });
   });
 
-  it('allows preflight for configured browser origins only', async () => {
-    vi.stubEnv('CORE_CORS_ORIGINS', 'https://web.example.test, http://localhost:5173');
+  it.each([
+    ['development', 'http://127.0.0.1:55173'],
+    ['production', 'https://web.example.test'],
+  ])('allows credentialed login only from configured origins in %s', async (profile, origin) => {
+    vi.stubEnv('INTELLIDOCS_ENV', profile);
+    vi.stubEnv('INTELLIDOCS_INTERNAL_KEY', randomBytes(32).toString('hex'));
+    vi.stubEnv('CORE_CORS_ORIGINS', 'https://other.example.test, ' + origin);
     try {
-      const { client } = await setup(1);
-      const allowed = await client
-        .options('/api/auth/me')
-        .set('Origin', 'https://web.example.test')
-        .set('Access-Control-Request-Method', 'GET')
-        .set('Access-Control-Request-Headers', 'authorization');
-      expect(allowed.status).toBe(204);
-      expect(allowed.headers['access-control-allow-origin']).toBe('https://web.example.test');
+      const { client, register } = await setup();
+      const preflight = (from: string) =>
+        client
+          .options('/api/auth/login')
+          .set('Origin', from)
+          .set('Access-Control-Request-Method', 'POST')
+          .set('Access-Control-Request-Headers', 'content-type');
+      const login = (from: string) =>
+        client.post('/api/auth/login').set('Origin', from).send(credentials);
+      await register().expect(201);
+      const allowed = await preflight(origin).expect(204);
+      expect(allowed.headers['access-control-allow-headers']).toContain('Content-Type');
       expect(allowed.headers['access-control-allow-headers']).toContain('Authorization');
+      for (const response of [allowed, await login(origin).expect(200)]) {
+        expect(response.headers['access-control-allow-origin']).toBe(origin);
+        expect(response.headers['access-control-allow-credentials']).toBe('true');
+        expect(response.headers.vary).toContain('Origin');
+      }
 
-      const response = await client.get('/api/auth/me').set('Origin', 'http://localhost:5173');
-      expect(response.status).toBe(401);
-      expect(response.headers['access-control-allow-origin']).toBe('http://localhost:5173');
-      expect(response.headers.vary).toContain('Origin');
-      const disallowed = await client.get('/health').set('Origin', 'https://unlisted.example.test');
-      expect(disallowed.headers['access-control-allow-origin']).toBeUndefined();
+      const foreign = 'https://web.example.test.unlisted.test';
+      for (const response of [await preflight(foreign), await login(foreign)]) {
+        expect(
+          Object.keys(response.headers).filter((key) => key.startsWith('access-control-')),
+        ).toEqual([]);
+        expect(response.headers.vary).toContain('Origin');
+        if (profile === 'production') expect(response.status).toBe(403);
+      }
     } finally {
       vi.unstubAllEnvs();
     }
   });
+
+  it.each(['*', 'https://web.example.test,*', 'https://*.example.test'])(
+    'rejects wildcard CORS configuration %s at startup',
+    (origins) => {
+      vi.stubEnv('CORE_CORS_ORIGINS', origins);
+      try {
+        expect(() => createApp()).toThrow(
+          'CORE_CORS_ORIGINS cannot contain wildcards when credentials are allowed',
+        );
+      } finally {
+        vi.unstubAllEnvs();
+      }
+    },
+  );
 
   it('adds security headers and rate limits authentication requests', async () => {
     const { client } = await setup(1);

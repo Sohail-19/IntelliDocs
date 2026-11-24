@@ -9,9 +9,21 @@ from docx import Document
 from e2e.mock_llm import answer
 from eval.timing import run
 from eval.timing.core import Core, Exchange
-from scripts.seed_demo import PILOT, docx
+from scripts.seed_demo import PILOT, docx, init
 
 SHEET = run.HERE / "timing_sheet.csv"
+
+
+def test_demo_allowlist_matches_printed_login_origin(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("DEMO_WEB_PORT", "55373")
+    init(tmp_path, "fixture")
+    access = run.read_object(tmp_path / "access.json")
+    lines = (tmp_path / "compose.env").read_text().splitlines()
+    settings = dict(line.split("=", 1) for line in lines)
+    assert settings["CORE_CORS_ORIGINS"] == access["web_url"] == "http://127.0.0.1:55373"
+    assert settings["VITE_API_URL"] == access["core_url"]
 
 
 def measurements(tmp_path: Path) -> Path:
