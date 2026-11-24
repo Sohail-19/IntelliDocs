@@ -5,6 +5,13 @@ const fixture = JSON.parse(readFileSync(new URL('../fixture.json', import.meta.u
 const email = 'demo-admin@example.test';
 const org = 'example';
 
+function logAuthFailure(request, status) {
+  const { origin, pathname } = new URL(request.url());
+  if (pathname.startsWith('/api/auth/')) {
+    console.error(`Demo auth request failed: ${request.method()} ${origin}${pathname} — ${status}`);
+  }
+}
+
 function fixturePdf(text) {
   const literal = text.replace(/[()\\]/g, '\\$&');
   const content = 'BT /F1 16 Tf 40 650 Td (' + literal + ') Tj ET';
@@ -46,11 +53,11 @@ test('completes an obligation and flags a task after confirming a circular amend
   page,
   request,
 }) => {
-  const { AUTH_BOOTSTRAP_TOKEN, DEMO_PASSWORD, DEMO_CORE_URL, DEMO_WEB_URL } = process.env;
-  if (!AUTH_BOOTSTRAP_TOKEN || !DEMO_PASSWORD || !DEMO_CORE_URL || !DEMO_WEB_URL) {
+  const { AUTH_BOOTSTRAP_TOKEN, DEMO_PASSWORD, DEMO_WEB_URL } = process.env;
+  if (!AUTH_BOOTSTRAP_TOKEN || !DEMO_PASSWORD || !DEMO_WEB_URL) {
     throw new Error('Use bash e2e/run-compose.sh to start the isolated demo stack');
   }
-  const bootstrap = await request.post(DEMO_CORE_URL + '/api/auth/register', {
+  const bootstrap = await request.post('/api/auth/register', {
     data: {
       org_id: org,
       email,
@@ -60,14 +67,34 @@ test('completes an obligation and flags a task after confirming a circular amend
       bootstrap_token: AUTH_BOOTSTRAP_TOKEN,
     },
   });
+  if (!bootstrap.ok()) {
+    console.error(`Demo auth request failed: POST ${bootstrap.url()} — HTTP ${bootstrap.status()}`);
+  }
   expect(bootstrap.status()).toBe(201);
 
+  page.on('response', (response) => {
+    if (response.status() >= 400) logAuthFailure(response.request(), 'HTTP ' + response.status());
+  });
+  page.on('requestfailed', (request) => {
+    logAuthFailure(request, `no HTTP status (${request.failure()?.errorText ?? 'unknown error'})`);
+  });
   await page.goto('/login');
   await page.getByLabel('Organization ID').fill(org);
   await page.getByLabel('Email address').fill(email);
   await page.getByLabel('Password', { exact: true }).fill(DEMO_PASSWORD);
   await page.getByRole('button', { name: 'Sign in' }).click();
-  await page.getByRole('link', { name: 'Documents' }).click();
+  const documents = page.getByRole('link', { name: 'Documents' });
+  await expect(documents, 'The demo user should reach the workspace after sign-in').toBeVisible();
+  const cookies = await page.context().cookies(DEMO_WEB_URL);
+  expect(
+    cookies.map(({ name, secure, httpOnly, sameSite }) => ({ name, secure, httpOnly, sameSite })),
+  ).toContainEqual({
+    name: '__Host-intellidocs-refresh',
+    secure: true,
+    httpOnly: true,
+    sameSite: 'Strict',
+  });
+  await documents.click();
   await upload(page, fixture);
 
   await page.getByRole('link', { name: 'Search', exact: true }).click();
@@ -106,10 +133,11 @@ test('completes an obligation and flags a task after confirming a circular amend
     .getByRole('row')
     .filter({ has: page.getByRole('rowheader', { name: 'task.transition', exact: true }) });
   await expect(changes).toHaveCount(3);
-  await changes.first().getByText('View changes', { exact: true }).click();
-  const diff = changes.first().getByRole('table', { name: 'Changed fields' });
-  await expect(diff.getByText('"in_progress"', { exact: true })).toBeVisible();
-  await expect(diff.getByText('"done"', { exact: true })).toBeVisible();
+  const transition = changes.first();
+  await transition.getByText('View changes', { exact: true }).click();
+  // Public demo mode keeps audit event metadata and redacts before/after values.
+  await expect(transition.getByText('No changed fields recorded.')).toBeVisible();
+  await expect(transition.getByText('Request', { exact: true })).toBeVisible();
 
   await page.getByRole('link', { name: 'Documents', exact: true }).click();
   await upload(page, fixture.original, '1. ' + fixture.original.quote);
