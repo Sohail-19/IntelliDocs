@@ -4,7 +4,7 @@ import { orgPolicy } from './auth/policy.js';
 import { PostgresAuthRepository } from './auth/repository.js';
 import { AuthService, authSettingsFromEnv } from './auth/service.js';
 import { loadNamedOrgConfigs } from './config/loader.js';
-import { configuredCors } from './cors.js';
+import { configuredCors, CorsConfigurationError } from './cors.js';
 import { createDatabasePool, databaseReady } from './database.js';
 import { DemoCleanup, demoUploadAdmission, scheduleDemoCleanup } from './demo.js';
 import { PostgresDocumentRepository } from './documents.js';
@@ -108,7 +108,10 @@ async function start(): Promise<void> {
   }
 }
 
-void start().catch(() => {
-  logEvent('startup_failed');
+void start().catch((error: unknown) => {
+  logEvent(
+    'startup_failed',
+    error instanceof CorsConfigurationError ? { reason: error.message } : {},
+  );
   process.exitCode = 1;
 });

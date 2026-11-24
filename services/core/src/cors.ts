@@ -1,5 +1,8 @@
 import type { RequestHandler } from 'express';
 
+// Only fixed configuration messages from this error may reach startup logs.
+export class CorsConfigurationError extends Error {}
+
 export function configuredCors(
   value = process.env.CORE_CORS_ORIGINS ?? '',
   production = false,
@@ -10,6 +13,11 @@ export function configuredCors(
       .map((entry) => entry.trim())
       .filter(Boolean)
       .map((entry) => {
+        if (entry.includes('*')) {
+          throw new CorsConfigurationError(
+            'CORE_CORS_ORIGINS cannot contain wildcards when credentials are allowed',
+          );
+        }
         const url = URL.canParse(entry) ? new URL(entry) : null;
         if (
           !url ||
@@ -21,13 +29,17 @@ export function configuredCors(
           url.search ||
           url.hash
         ) {
-          throw new Error('CORE_CORS_ORIGINS must contain HTTP origins');
+          throw new CorsConfigurationError(
+            production
+              ? 'CORE_CORS_ORIGINS requires explicit HTTPS origins'
+              : 'CORE_CORS_ORIGINS must contain HTTP or HTTPS origins',
+          );
         }
         return url.origin;
       }),
   );
   if (production && !allowed.size)
-    throw new Error('CORE_CORS_ORIGINS requires explicit HTTPS origins');
+    throw new CorsConfigurationError('CORE_CORS_ORIGINS requires explicit HTTPS origins');
   return (request, response, next) => {
     response.vary('Origin');
     const origin = request.get('Origin');
@@ -39,8 +51,10 @@ export function configuredCors(
       next();
       return;
     }
-    response.set('Access-Control-Allow-Origin', origin);
-    if (production) response.set('Access-Control-Allow-Credentials', 'true');
+    response.set({
+      'Access-Control-Allow-Origin': origin,
+      'Access-Control-Allow-Credentials': 'true',
+    });
     if (request.method === 'OPTIONS' && request.get('Access-Control-Request-Method')) {
       response.set({
         'Access-Control-Allow-Methods': 'GET, HEAD, POST, PUT, PATCH, OPTIONS',
