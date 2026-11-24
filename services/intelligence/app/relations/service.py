@@ -4,7 +4,6 @@ import os
 from collections.abc import Callable, Iterator
 from contextlib import AbstractContextManager, contextmanager
 from itertools import islice
-from pathlib import Path
 from uuid import UUID
 
 from app.extraction.service import IndexNotReady
@@ -20,6 +19,7 @@ from intellidocs_intelligence.models import (
     ParsedDocument,
     RelationResult,
 )
+from intellidocs_intelligence.runtime import cache_directory
 
 from .candidates import CandidateFinder
 from .classifier import ClassificationError, RelationClassifier
@@ -28,8 +28,7 @@ RelationFactory = Callable[[], AbstractContextManager["RelationService"]]
 
 
 def classifier_from_env(org: OrgConfig) -> RelationClassifier:
-    storage = Path(os.environ.get("STORAGE_DIR", "data/uploads"))
-    cache = DiskCache(Path(os.environ.get("LLM_CACHE_DIR") or storage / "llm-cache"))
+    cache = DiskCache(cache_directory())
     return RelationClassifier(
         provider_from_env(),
         org,

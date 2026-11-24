@@ -12,7 +12,7 @@ export function documentStatus(document: DocumentRecord) {
 
 export function isProcessing(document: DocumentRecord) {
   const status = documentStatus(document);
-  return status === 'parsed' || status === 'indexed';
+  return status === 'parsed' || (status === 'indexed' && !document.extraction_error);
 }
 
 const statusLabels = {

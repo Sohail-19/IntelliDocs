@@ -161,6 +161,50 @@ async function setup(rateLimit = 30) {
   };
 }
 
+it('keeps production refresh tokens in secured cookies and rejects foreign origins', async () => {
+  const origin = 'https://app.example.test';
+  vi.stubEnv('INTELLIDOCS_ENV', 'production');
+  vi.stubEnv('INTELLIDOCS_INTERNAL_KEY', randomBytes(32).toString('hex'));
+  vi.stubEnv('CORE_CORS_ORIGINS', origin);
+  try {
+    const { client, register } = await setup();
+    await register().expect(201);
+    await client
+      .post('/api/auth/login')
+      .set('Origin', 'https://other.example.test')
+      .send(credentials)
+      .expect(403);
+    const login = await client
+      .post('/api/auth/login')
+      .set('Origin', origin)
+      .send(credentials)
+      .expect(200);
+    expect(login.body).not.toHaveProperty('refresh_token');
+    expect(login.headers['access-control-allow-credentials']).toBe('true');
+    const [set] = login.headers['set-cookie'] as string[];
+    expect(set).toMatch(/^__Host-intellidocs-refresh=/);
+    for (const flag of ['Secure', 'HttpOnly', 'SameSite=Strict', 'Path=/'])
+      expect(set).toContain(flag);
+    const [cookie] = set!.split(';');
+    await client.post('/api/auth/refresh').set('Cookie', cookie!).expect(403);
+    const refreshed = await client
+      .post('/api/auth/refresh')
+      .set('Origin', origin)
+      .set('Cookie', cookie!)
+      .send({})
+      .expect(200);
+    expect(refreshed.body).not.toHaveProperty('refresh_token');
+    await client
+      .post('/api/auth/refresh')
+      .set('Origin', origin)
+      .set('Cookie', cookie!)
+      .send({})
+      .expect(401);
+  } finally {
+    vi.unstubAllEnvs();
+  }
+});
+
 describe('core auth', () => {
   it('bootstraps the configured admin, then requires an admin in the same org', async () => {
     const { client, register, bootstrap, login, users } = await setup();

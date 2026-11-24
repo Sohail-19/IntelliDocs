@@ -11,6 +11,7 @@ import type {
   UserChange,
 } from '../../../../contracts/core-api.v1.js';
 import type { AuditContext, AuditRequest } from '../audit.js';
+import { strongSecret } from '../runtime.js';
 import { permits } from './policy.js';
 import type { OrgPolicy, Permission, Principal } from './policy.js';
 import type { AuthRepository } from './repository.js';
@@ -18,6 +19,11 @@ import type { AuthRepository } from './repository.js';
 const issuer = 'intellidocs-core';
 const audience = 'intellidocs-api';
 const hashOptions = { type: argon2id, memoryCost: 19456, timeCost: 2, parallelism: 1 } as const;
+type SessionTokens = AuthTokens & { refresh_token: string };
+
+export function hashPassword(password: string): Promise<string> {
+  return hash(password, hashOptions);
+}
 
 export class AuthError extends Error {
   constructor(
@@ -48,10 +54,17 @@ function integerSetting(name: string, fallback: number, maximum: number): number
   return value;
 }
 
-export function authSettingsFromEnv(): AuthSettings {
+export function authSettingsFromEnv(
+  production = process.env.INTELLIDOCS_ENV === 'production',
+): AuthSettings {
   const secret = process.env.AUTH_JWT_SECRET ?? '';
   const bootstrap = process.env.AUTH_BOOTSTRAP_TOKEN ?? '';
-  if (Buffer.byteLength(secret) < 32 || Buffer.byteLength(bootstrap) < 32 || secret === bootstrap) {
+  if (
+    Buffer.byteLength(secret) < 32 ||
+    Buffer.byteLength(bootstrap) < 32 ||
+    secret === bootstrap ||
+    (production && (!strongSecret(secret) || !strongSecret(bootstrap)))
+  ) {
     throw new Error(
       'Set distinct AUTH_JWT_SECRET and AUTH_BOOTSTRAP_TOKEN values of at least 32 bytes',
     );
@@ -142,13 +155,13 @@ export class AuthService {
       bootstrapAuthorized,
       audit,
       actorUserId: administratorAuthorized ? (actor?.id ?? null) : null,
-      passwordHash: await hash(input.password, hashOptions),
+      passwordHash: await hashPassword(input.password),
     });
     if (outcome === 'duplicate') throw new AuthError(409, 'An account already exists');
     if (outcome === 'forbidden') throw new AuthError(403, 'Registration is not allowed');
   }
 
-  async login(input: Credentials, audit: AuditRequest): Promise<AuthTokens> {
+  async login(input: Credentials, audit: AuditRequest): Promise<SessionTokens> {
     const user = await this.repository.account(input.org_id, input.email);
     const valid = await verify(user?.passwordHash ?? this.dummyHash, input.password);
     if (!user || !valid || !this.policies.has(user.orgSlug)) {
@@ -162,7 +175,7 @@ export class AuthService {
     return this.issue(user, refresh.raw, now);
   }
 
-  async refresh(raw: string, audit: AuditRequest): Promise<AuthTokens> {
+  async refresh(raw: string, audit: AuditRequest): Promise<SessionTokens> {
     const now = this.now();
     const refresh = this.newRefresh(now);
     const user = await this.repository.rotateRefresh(hashToken(raw), now, refresh.record, audit);
@@ -279,7 +292,7 @@ export class AuthService {
     };
   }
 
-  private async issue(user: Principal, refresh: string, now: Date): Promise<AuthTokens> {
+  private async issue(user: Principal, refresh: string, now: Date): Promise<SessionTokens> {
     const issued = Math.floor(now.getTime() / 1000);
     const access = await new SignJWT({})
       .setProtectedHeader({ alg: 'HS256', typ: 'at+jwt' })

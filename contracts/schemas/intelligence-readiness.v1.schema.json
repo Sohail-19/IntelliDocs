@@ -1,0 +1,13 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "intelligence-readiness.v1.schema.json",
+  "title": "IntelligenceReadiness",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["status", "qdrant", "llm"],
+  "properties": {
+    "status": { "enum": ["ready", "not_ready"] },
+    "qdrant": { "enum": ["ok", "unavailable"] },
+    "llm": { "enum": ["key_present", "missing_key", "disabled", "not_required", "unavailable"] }
+  }
+}

@@ -77,7 +77,11 @@ class QdrantStore(VectorStore):
         collection = os.environ.get("QDRANT_COLLECTION", "")
         if not url or not collection:
             raise ValueError("QDRANT_URL and QDRANT_COLLECTION are required")
-        return cls(QdrantClient(url=url), collection, embedder)
+        return cls(
+            QdrantClient(url=url, api_key=os.environ.get("QDRANT_API_KEY") or None),
+            collection,
+            embedder,
+        )
 
     def _ensure_collection(self, dimension: int) -> None:
         modifier = (

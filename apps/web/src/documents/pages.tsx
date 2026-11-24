@@ -213,7 +213,9 @@ function ProcessingSteps({ document, retrying }: { document: DocumentRecord; ret
       : status === 'failed' && document.extraction_status === 'failed' && !retrying
         ? 'Failed'
         : document.status === 'indexed'
-          ? 'Processing'
+          ? document.extraction_error && !retrying
+            ? 'Deferred'
+            : 'Processing'
           : 'Waiting';
   return (
     <ol className="processing-steps">
@@ -382,6 +384,9 @@ export function DocumentDetail() {
                 <h2 id="processing-heading">Processing steps</h2>
               </div>
               <ProcessingSteps document={document} retrying={retry.isPending} />
+              {document.status === 'indexed' &&
+                document.extraction_status === 'pending' &&
+                document.extraction_error && <p role="status">{document.extraction_error}</p>}
             </section>
           </div>
           {canReadObligations && (

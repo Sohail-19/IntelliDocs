@@ -23,6 +23,7 @@ import { runDetection } from './relations/detection.js';
 import type { PostgresRelationRepository } from './relations/repository.js';
 import { relationRouter } from './relations/routes.js';
 import { routingRouter } from './routing/routes.js';
+import { runtimeFromEnv } from './runtime.js';
 import type { PostgresRoutingService } from './routing/service.js';
 import { searchRouter } from './search.js';
 import { sourceRouter } from './source-routes.js';
@@ -47,6 +48,7 @@ type AppDependencies = UploadDependencies & {
   relations?: PostgresRelationRepository;
   documentBrowser?: DocumentBrowser;
   summaryPreviewAudit?: PreviewAudit;
+  readiness?: { postgres(): Promise<unknown>; intelligence(): Promise<unknown> };
 };
 
 export function createApp(
@@ -54,15 +56,38 @@ export function createApp(
   security: { auth?: AuthService; guard?: Guard } = {},
 ): express.Express {
   const app = express();
+  const runtime = runtimeFromEnv();
+  if (runtime.proxyHops) app.set('trust proxy', runtime.proxyHops);
   app.use(assignRequestId);
   app.use(helmet());
-  app.use(configuredCors());
+  app.use(configuredCors(undefined, runtime.production));
   const { auth } = security;
-  if (auth) app.use('/api/auth', authRouter(auth));
-  app.use(express.json());
+  if (auth) app.use('/api/auth', authRouter(auth, runtime.production));
+  app.use(express.json({ limit: runtime.jsonBytes, inflate: false }));
   // Health is public; data routes deny requests when no security guard is configured.
   app.get('/health', (_request, response) => {
     response.status(200).json({ status: 'ok' });
+  });
+  app.get('/ready', (_request, response) => {
+    const checks = Object.entries(dependencies?.readiness ?? {});
+    void Promise.allSettled(checks.map(([, check]) => Promise.resolve().then(check))).then(
+      (results) => {
+        const ready =
+          results.length === 2 && results.every((result) => result.status === 'fulfilled');
+        response
+          .set('Cache-Control', 'no-store')
+          .status(ready ? 200 : 503)
+          .json({
+            status: ready ? 'ready' : 'not_ready',
+            checks: Object.fromEntries(
+              checks.map(([name], i) => [
+                name,
+                results[i]?.status === 'fulfilled' ? 'ok' : 'unavailable',
+              ]),
+            ),
+          });
+      },
+    );
   });
   const guard: Guard = auth
     ? (...permissions) => requirePermission(auth, ...permissions)
@@ -164,6 +189,7 @@ export function createApp(
         extraction,
         obligations && (async (id, orgId) => Boolean(await obligations.documentState(id, orgId))),
         detection,
+        runtime.production || runtime.demo,
       ),
     );
     if (dependencies.obligations && extraction) {
@@ -186,7 +212,7 @@ export function createApp(
         typeof _error === 'object' && _error !== null && 'status' in _error
           ? _error.status
           : undefined;
-      if (status === 400 || status === 413) {
+      if (status === 400 || status === 413 || status === 415) {
         response.status(status).json({ error: 'Invalid request body' });
       } else {
         response.status(500).json({ error: 'Request processing failed' });

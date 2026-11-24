@@ -381,7 +381,7 @@ export class PostgresRelationRepository {
     return readConfirmedChanges(this.pool, orgId, docIds);
   }
 
-  private async refreshAuthority(client: PoolClient, id: string, audit: AuditContext) {
+  async refreshAuthority(client: PoolClient, id: string, audit: AuditContext) {
     const {
       rows: [target],
     } = await client.query<{ id: number; authority_status: DocumentAuthorityStatus }>(
